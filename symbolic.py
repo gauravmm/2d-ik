@@ -1,7 +1,7 @@
 #!python3
 
 import sympy as sp
-from typing import Any, Callable
+from typing import Any, Callable, Tuple
 
 from datamodel import Position, RobotModel, RobotPosition, RobotState
 
@@ -16,11 +16,13 @@ class IKSymbolic:
         self.n_joints = len(model.link_lengths)
 
         # Create symbolic variables for joint angles
-        self.theta_symbols = sp.symbols(f"theta0:{self.n_joints}", real=True)
+        thetas = sp.symbols(f"theta0:{self.n_joints}", real=True, seq=True)
+        assert isinstance(thetas, tuple)
+        self.theta_symbols: Tuple[sp.Symbol, ...] = thetas
 
         # Build symbolic forward kinematics equations
-        x_sym: sp.Float = sp.Float(0)
-        y_sym: sp.Float = sp.Float(0)
+        x_sym: sp.Expr = sp.Float(0)
+        y_sym: sp.Expr = sp.Float(0)
         cumulative_angle = sp.Float(0)
 
         for i, (link_length, joint_origin) in enumerate(
@@ -34,8 +36,8 @@ class IKSymbolic:
             y_sym = y_sym + link_length * sp.sin(cumulative_angle)
 
         # Store the symbolic end effector position equations
-        self.end_effector_x: sp.Float = x_sym
-        self.end_effector_y: sp.Float = y_sym
+        self.end_effector_x: sp.Expr = x_sym
+        self.end_effector_y: sp.Expr = y_sym
 
     def __call__(self, state: RobotState) -> RobotPosition:
         # Sanity-check that state.model is the same as self.model
