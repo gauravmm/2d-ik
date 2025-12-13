@@ -20,6 +20,10 @@ class IKSymbolic:
         assert isinstance(thetas, tuple)
         self.theta_symbols: Tuple[sp.Symbol, ...] = thetas
 
+        # Create symbolic variables for target position
+        target_x = sp.Symbol("target_x", real=True)
+        target_y = sp.Symbol("target_y", real=True)
+
         # Build symbolic forward kinematics equations
         x_sym: sp.Expr = sp.Float(0)
         y_sym: sp.Expr = sp.Float(0)
@@ -39,6 +43,31 @@ class IKSymbolic:
         self.end_effector_x: sp.Expr = x_sym
         self.end_effector_y: sp.Expr = y_sym
 
+        # Create distance squared function
+        distance_squared = (x_sym - target_x) ** 2 + (y_sym - target_y) ** 2
+
+        # Simplify the distance function
+        distance_squared_simplified = sp.simplify(distance_squared)
+
+        # Compute the gradient (derivative with respect to each joint angle)
+        gradient = [sp.diff(distance_squared_simplified, theta) for theta in self.theta_symbols]
+        gradient_simplified = [sp.simplify(g) for g in gradient]
+
+        # Convert to numerical functions
+        # Distance function takes (target_x, target_y, theta0, theta1, ...)
+        self.distance_func = sp.lambdify(
+            [target_x, target_y] + list(self.theta_symbols),
+            distance_squared_simplified,
+            "numpy"
+        )
+
+        # Gradient function takes (target_x, target_y, theta0, theta1, ...)
+        self.gradient_func = sp.lambdify(
+            [target_x, target_y] + list(self.theta_symbols),
+            gradient_simplified,
+            "numpy"
+        )
+
     def __call__(self, state: RobotState) -> RobotPosition:
         # Sanity-check that state.model is the same as self.model
         if state.model != self.model:
@@ -50,26 +79,28 @@ class IKSymbolic:
 
         target_x, target_y = state.desired_end_effector
 
-        # For inverse kinematics, we want to minimize the distance to target
-        # Create distance squared function
-        distance_squared = (self.end_effector_x - target_x) ** 2 + (
-            self.end_effector_y - target_y
-        ) ** 2
-
-        # Convert to a numerical function
-        distance_func = sp.lambdify(self.theta_symbols, distance_squared, "numpy")
-
-        # Use scipy for optimization
+        # Use scipy for optimization with precomputed distance and gradient functions
         from scipy.optimize import minimize
 
         # Initial guess from current state
         x0 = list(state.current.joint_angles)
 
-        # Minimize distance to target
-        # type: ignore
-        result = minimize(lambda x: distance_func(*x), x0, method="BFGS")
+        # Define objective function and gradient with fixed target
+        def objective(thetas):
+            return self.distance_func(target_x, target_y, *thetas)
+
+        def gradient(thetas):
+            return self.gradient_func(target_x, target_y, *thetas)
+
+        # Minimize distance to target using BFGS with analytical gradient
+        result = minimize(objective, x0, method="BFGS", jac=gradient)
 
         # Extract joint angles from solution
         joint_angles = tuple(float(angle) for angle in result.x)
 
         return RobotPosition(joint_angles=joint_angles)
+
+if __name__ == "__init__":
+    # TODO: Use the RobotVisualizer class to generate an interactive solver.
+    # each time a person generates a click callback, update the desired end effector position
+    # to match and use the solver to find a new solution for it.

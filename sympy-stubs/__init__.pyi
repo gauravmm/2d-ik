@@ -50,9 +50,17 @@ def sin(x: Union[Expr, float, int]) -> Expr:
     """Sine function."""
     ...
 
+def simplify(expr: Expr) -> Expr:
+    """Simplify a SymPy expression."""
+    ...
+
+def diff(expr: Expr, symbol: Symbol) -> Expr:
+    """Compute the derivative of an expression with respect to a symbol."""
+    ...
+
 def lambdify(
     args: Union[Symbol, Sequence[Symbol]],
-    expr: Expr,
+    expr: Union[Expr, Sequence[Expr]],
     modules: Union[str, list[str], None] = None,
     **kwargs: Any
 ) -> Callable[..., Any]:
