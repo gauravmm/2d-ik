@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
+from matplotlib import artist
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from matplotlib.lines import Line2D
 import matplotlib.animation as animation
 from datamodel import RobotModel, RobotPosition, RobotState
-from typing import Callable, Optional
+from typing import Callable, Iterable, List, Optional, Sequence
 
 
 class RobotVisualizer:
@@ -19,7 +20,7 @@ class RobotVisualizer:
         joint_radius: float = 0.05,
         link_width: float = 2.0,
         auto_scale: bool = True,
-        scale_margin: float = 1.2
+        scale_margin: float = 1.2,
     ):
         """Initialize the robot visualizer.
 
@@ -41,11 +42,11 @@ class RobotVisualizer:
 
         # Create figure and axis
         self.fig, self.ax = plt.subplots(figsize=figsize)
-        self.ax.set_aspect('equal')
+        self.ax.set_aspect("equal")
         self.ax.grid(True, alpha=0.3)
-        self.ax.set_xlabel('X (units)')
-        self.ax.set_ylabel('Y (units)')
-        self.ax.set_title('2D Robot Arm Visualization')
+        self.ax.set_xlabel("X (units)")
+        self.ax.set_ylabel("Y (units)")
+        self.ax.set_title("2D Robot Arm Visualization")
 
         # Initialize plot elements
         self.link_lines: list[Line2D] = []
@@ -54,7 +55,7 @@ class RobotVisualizer:
 
         # Set up click event handling
         if self.click_callback:
-            self.fig.canvas.mpl_connect('button_press_event', self._on_click)
+            self.fig.canvas.mpl_connect("button_press_event", self._on_click)
 
         # Initial draw
         self._setup_plot_elements()
@@ -67,21 +68,27 @@ class RobotVisualizer:
 
         # Create link lines
         for i in range(num_links):
-            line = Line2D([0, 0], [0, 0], linewidth=self.link_width, color='blue',
-                         solid_capstyle='round', zorder=1)
+            line = Line2D(
+                [0, 0],
+                [0, 0],
+                linewidth=self.link_width,
+                color="blue",
+                solid_capstyle="round",
+                zorder=1,
+            )
             self.ax.add_line(line)
             self.link_lines.append(line)
 
         # Create joint circles (including base)
         for i in range(num_links):
-            circle = Circle((0, 0), self.joint_radius, color='red',
-                          fill=True, zorder=2)
+            circle = Circle((0, 0), self.joint_radius, color="red", fill=True, zorder=2)
             self.ax.add_patch(circle)
             self.joint_circles.append(circle)
 
         # Create end effector circle (different color)
-        self.end_effector_circle = Circle((0, 0), self.joint_radius * 1.2,
-                                         color='green', fill=True, zorder=3)
+        self.end_effector_circle = Circle(
+            (0, 0), self.joint_radius * 1.2, color="green", fill=True, zorder=3
+        )
         self.ax.add_patch(self.end_effector_circle)
 
     def _update_view_limits(self):
@@ -96,7 +103,11 @@ class RobotVisualizer:
 
     def _on_click(self, event):
         """Handle mouse click events."""
-        if event.inaxes == self.ax and event.xdata is not None and event.ydata is not None:
+        if (
+            event.inaxes == self.ax
+            and event.xdata is not None
+            and event.ydata is not None
+        ):
             if self.click_callback:
                 self.click_callback(event.xdata, event.ydata)
 
@@ -126,10 +137,10 @@ class RobotVisualizer:
             if robot_state.desired_end_effector is not None:
                 self.end_effector_circle.center = robot_state.desired_end_effector
             else:
-                self.end_effector_circle.center = (999., 999.)
+                self.end_effector_circle.center = (999.0, 999.0)
 
         # Force redraw
-        if hasattr(self.fig.canvas, 'draw_idle'):
+        if hasattr(self.fig.canvas, "draw_idle"):
             self.fig.canvas.draw_idle()
         else:
             self.fig.canvas.draw()
@@ -142,7 +153,7 @@ class RobotVisualizer:
         self,
         update_func: Callable[[int], RobotState],
         interval: int = 50,
-        frames: Optional[int] = None
+        frames: Optional[int] = None,
     ):
         """Run an animation loop that updates the robot position.
 
@@ -151,17 +162,18 @@ class RobotVisualizer:
             interval: Time between frames in milliseconds
             frames: Number of frames (None for infinite loop)
         """
-        def animate_frame(frame):
+
+        def animate_frame(frame) -> Sequence[artist.Artist]:
             new_state = update_func(frame)
             self.update(new_state)
-            return self.link_lines + self.joint_circles + [self.end_effector_circle]
+            # This construction is to make the typechecker happy:
+            rv: List[artist.Artist] = [] + self.link_lines + self.joint_circles
+            if self.end_effector_circle:
+                rv.append(self.end_effector_circle)
+            return rv
 
         anim = animation.FuncAnimation(
-            self.fig,
-            animate_frame,
-            frames=frames,
-            interval=interval,
-            blit=False
+            self.fig, animate_frame, frames=frames, interval=interval, blit=False
         )
 
         plt.show()
@@ -181,15 +193,10 @@ if __name__ == "__main__":
     import math
 
     # Create a simple 3-link robot
-    model = RobotModel(
-        link_lengths=(1.0, 0.8, 0.6),
-        joint_origins=(0.0, 0.0, 0.0)
-    )
+    model = RobotModel(link_lengths=(1.0, 0.8, 0.6), joint_origins=(0.0, 0.0, 0.0))
 
     # Initial position
-    position = RobotPosition(
-        joint_angles=(0.0, math.pi/4, -math.pi/4)
-    )
+    position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
     state = RobotState(model, position, (0, 0))
 
     # Click handler
@@ -202,17 +209,20 @@ if __name__ == "__main__":
     # Example: Update loop with animation
     global frame_count
     frame_count = 0
+
     def update_robot(frame):
         global frame_count
         frame_count = frame
         # Animate by rotating the first joint
         new_angles = (
             math.sin(frame * 0.05),
-            math.pi/4 + math.cos(frame * 0.03),
-            -math.pi/4 + math.sin(frame * 0.07)
+            math.pi / 4 + math.cos(frame * 0.03),
+            -math.pi / 4 + math.sin(frame * 0.07),
         )
         position = RobotPosition(joint_angles=new_angles)
-        return RobotState(model, position, (math.sin(frame*0.04), math.cos(frame*0.04)))
+        return RobotState(
+            model, position, (math.sin(frame * 0.04), math.cos(frame * 0.04))
+        )
 
     # Run animation
     viz.animate(update_robot, interval=50)
