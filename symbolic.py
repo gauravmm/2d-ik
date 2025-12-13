@@ -1,7 +1,7 @@
 #!python3
 
 import sympy as sp
-from typing import Any
+from typing import Any, Callable
 
 from datamodel import Position, RobotModel, RobotPosition, RobotState
 
@@ -16,14 +16,16 @@ class IKSymbolic:
         self.n_joints = len(model.link_lengths)
 
         # Create symbolic variables for joint angles
-        self.theta_symbols = sp.symbols(f'theta0:{self.n_joints}', real=True)
+        self.theta_symbols = sp.symbols(f"theta0:{self.n_joints}", real=True)
 
         # Build symbolic forward kinematics equations
-        x_sym = sp.Float(0)
-        y_sym = sp.Float(0)
+        x_sym: sp.Float = sp.Float(0)
+        y_sym: sp.Float = sp.Float(0)
         cumulative_angle = sp.Float(0)
 
-        for i, (link_length, joint_origin) in enumerate(zip(model.link_lengths, model.joint_origins)):
+        for i, (link_length, joint_origin) in enumerate(
+            zip(model.link_lengths, model.joint_origins)
+        ):
             # Add joint angle and origin to cumulative angle
             cumulative_angle = cumulative_angle + self.theta_symbols[i] + joint_origin
 
@@ -32,8 +34,8 @@ class IKSymbolic:
             y_sym = y_sym + link_length * sp.sin(cumulative_angle)
 
         # Store the symbolic end effector position equations
-        self.end_effector_x = x_sym
-        self.end_effector_y = y_sym
+        self.end_effector_x: sp.Float = x_sym
+        self.end_effector_y: sp.Float = y_sym
 
     def __call__(self, state: RobotState) -> RobotPosition:
         # Sanity-check that state.model is the same as self.model
@@ -48,10 +50,12 @@ class IKSymbolic:
 
         # For inverse kinematics, we want to minimize the distance to target
         # Create distance squared function
-        distance_squared = (self.end_effector_x - target_x)**2 + (self.end_effector_y - target_y)**2
+        distance_squared = (self.end_effector_x - target_x) ** 2 + (
+            self.end_effector_y - target_y
+        ) ** 2
 
         # Convert to a numerical function
-        distance_func = sp.lambdify(self.theta_symbols, distance_squared, 'numpy')
+        distance_func = sp.lambdify(self.theta_symbols, distance_squared, "numpy")
 
         # Use scipy for optimization
         from scipy.optimize import minimize
@@ -60,11 +64,8 @@ class IKSymbolic:
         x0 = list(state.current.joint_angles)
 
         # Minimize distance to target
-        result = minimize(
-            lambda x: distance_func(*x),
-            x0,
-            method='BFGS'
-        )
+        # type: ignore
+        result = minimize(lambda x: distance_func(*x), x0, method="BFGS")
 
         # Extract joint angles from solution
         joint_angles = tuple(float(angle) for angle in result.x)
