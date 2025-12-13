@@ -4,22 +4,30 @@ from dataclasses import dataclass, field
 import math
 from typing import List, Optional, Tuple
 
+
 @dataclass(frozen=True)
 class RobotModel:
     """Defines the parameters for a robot on a 2d plane consisting of a chain of rigid links with revolute joints between them. Link displacements and joint origins must be configurable."""
+
     link_lengths: tuple[float, ...]  # Length of each link in the chain
-    joint_origins: tuple[float, ...] = field(default=tuple())  # Initial angle offset for each joint (defaults to 0 for all joints)
+    joint_origins: tuple[float, ...] = field(
+        default=tuple()
+    )  # Initial angle offset for each joint (defaults to 0 for all joints)
 
     def __post_init__(self):
         # Validate that we have consistent dimensions
         if self.joint_origins and len(self.joint_origins) != len(self.link_lengths):
-            raise ValueError(f"Number of joint origins ({len(self.joint_origins)}) must match number of links ({len(self.link_lengths)})")
+            raise ValueError(
+                f"Number of joint origins ({len(self.joint_origins)}) must match number of links ({len(self.link_lengths)})"
+            )
 
         # If no joint origins specified, set them all to 0
         if not self.joint_origins:
-            object.__setattr__(self, 'joint_origins', tuple(0.0 for _ in self.link_lengths))
+            object.__setattr__(
+                self, "joint_origins", tuple(0.0 for _ in self.link_lengths)
+            )
 
-    def forward_kinematics(self, position: 'RobotPosition') -> List['Position']:
+    def forward_kinematics(self, position: "RobotPosition") -> List["Position"]:
         """Calculate the (x, y) position of each joint in the chain using forward kinematics.
 
         Args:
@@ -47,18 +55,22 @@ class RobotModel:
 
         return positions
 
+
 Position = Tuple[float, float]
+
 
 @dataclass(frozen=True)
 class RobotPosition:
     """Defines the current joint rotation values of the 2d robot, relative to the joint origin defined in RobotModel."""
+
     joint_angles: tuple[float, ...]  # Current rotation angle for each joint (radians)
+
 
 @dataclass(frozen=True)
 class RobotState:
     model: RobotModel
-    position: RobotPosition
-    desired_end_effector : Optional[Position] = None
+    current: RobotPosition
+    desired_end_effector: Optional[Position] = None
 
     def get_joint_positions(self) -> List[Position]:
         """Convenience method to calculate joint positions using forward kinematics.
@@ -66,4 +78,4 @@ class RobotState:
         Returns:
             A list of (x, y) tuples representing the position of each joint.
         """
-        return self.model.forward_kinematics(self.position)
+        return self.model.forward_kinematics(self.current)

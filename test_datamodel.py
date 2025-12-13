@@ -56,9 +56,7 @@ class TestGetJointPositions:
         """Test three links with various angles."""
         model = RobotModel(link_lengths=(1.0, 1.0, 1.0))
         # First link at 0°, second at +45°, third at -90°
-        position = RobotPosition(
-            joint_angles=(0.0, math.pi / 4, -math.pi / 2)
-        )
+        position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 2))
 
         joints = model.forward_kinematics(position)
 
@@ -80,7 +78,7 @@ class TestGetJointPositions:
         """Test that joint origins (offsets) are applied correctly."""
         model = RobotModel(
             link_lengths=(1.0, 1.0),
-            joint_origins=(math.pi / 4, 0.0)  # First joint has 45° offset
+            joint_origins=(math.pi / 4, 0.0),  # First joint has 45° offset
         )
         position = RobotPosition(joint_angles=(0.0, 0.0))
 
@@ -90,7 +88,9 @@ class TestGetJointPositions:
         assert joints[0] == (0.0, 0.0)
 
         # First link with 45° offset
-        assert joints[1] == pytest.approx((math.cos(math.pi / 4), math.sin(math.pi / 4)))
+        assert joints[1] == pytest.approx(
+            (math.cos(math.pi / 4), math.sin(math.pi / 4))
+        )
 
         # Second link continues at same angle
         expected_x = 2 * math.cos(math.pi / 4)
@@ -136,7 +136,7 @@ class TestGetJointPositions:
         """Test complex case with both joint origins and angles."""
         model = RobotModel(
             link_lengths=(1.0, 1.0),
-            joint_origins=(math.pi / 6, -math.pi / 6)  # 30° and -30° offsets
+            joint_origins=(math.pi / 6, -math.pi / 6),  # 30° and -30° offsets
         )
         position = RobotPosition(
             joint_angles=(math.pi / 6, math.pi / 3)  # 30° and 60° angles
@@ -148,7 +148,9 @@ class TestGetJointPositions:
         assert joints[0] == (0.0, 0.0)
 
         # First link: angle = π/6 + π/6 = π/3
-        assert joints[1] == pytest.approx((math.cos(math.pi / 3), math.sin(math.pi / 3)))
+        assert joints[1] == pytest.approx(
+            (math.cos(math.pi / 3), math.sin(math.pi / 3))
+        )
 
         # Second link: cumulative = π/3 + π/3 - π/6 = π/2
         expected_x = math.cos(math.pi / 3) + math.cos(math.pi / 2)
