@@ -63,7 +63,7 @@ class RobotVisualizer:
 
     def _setup_plot_elements(self):
         """Create the plot elements for links and joints."""
-        num_links = len(self.robot_state.position.model.link_lengths)
+        num_links = len(self.robot_state.model.link_lengths)
 
         # Create link lines
         for i in range(num_links):
@@ -88,7 +88,7 @@ class RobotVisualizer:
         """Update the view limits based on robot configuration."""
         if self.auto_scale:
             # Calculate maximum reach (sum of all link lengths)
-            max_reach = sum(self.robot_position.model.link_lengths)
+            max_reach = sum(self.robot_state.model.link_lengths)
             margin = max_reach * self.scale_margin
 
             self.ax.set_xlim(-margin, margin)
@@ -104,12 +104,12 @@ class RobotVisualizer:
         """Update the visualization with a new robot position.
 
         Args:
-            robot_position: New RobotPosition to display
+            robot_state: New RobotState to display
         """
-        self.robot_position = robot_state.position
+        self.robot_state = robot_state
 
         # Get joint positions
-        positions = self.robot_position.get_joint_positions()
+        positions = robot_state.position.get_joint_positions(robot_state.model)
 
         # Update link lines
         for i, line in enumerate(self.link_lines):
@@ -188,10 +188,9 @@ if __name__ == "__main__":
 
     # Initial position
     position = RobotPosition(
-        model=model,
         joint_angles=(0.0, math.pi/4, -math.pi/4)
     )
-    state = RobotState(position, (0, 0))
+    state = RobotState(model, position, (0, 0))
 
     # Click handler
     def on_click(x, y):
@@ -212,8 +211,8 @@ if __name__ == "__main__":
             math.pi/4 + math.cos(frame * 0.03),
             -math.pi/4 + math.sin(frame * 0.07)
         )
-        position = RobotPosition(model=model, joint_angles=new_angles)
-        return RobotState(position, (math.sin(frame*0.04), math.cos(frame*0.04)))
+        position = RobotPosition(joint_angles=new_angles)
+        return RobotState(model, position, (math.sin(frame*0.04), math.cos(frame*0.04)))
 
     # Run animation
     viz.animate(update_robot, interval=50)

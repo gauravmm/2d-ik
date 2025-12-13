@@ -9,9 +9,9 @@ class TestGetJointPositions:
     def test_single_link_zero_angle(self):
         """Test a single link at zero angle points along positive x-axis."""
         model = RobotModel(link_lengths=(1.0,))
-        position = RobotPosition(model=model, joint_angles=(0.0,))
+        position = RobotPosition(joint_angles=(0.0,))
 
-        joints = position.get_joint_positions()
+        joints = position.get_joint_positions(model)
 
         assert len(joints) == 2  # Base + end effector
         assert joints[0] == (0.0, 0.0)  # Base at origin
@@ -20,9 +20,9 @@ class TestGetJointPositions:
     def test_single_link_90_degrees(self):
         """Test a single link at 90 degrees points along positive y-axis."""
         model = RobotModel(link_lengths=(1.0,))
-        position = RobotPosition(model=model, joint_angles=(math.pi / 2,))
+        position = RobotPosition(joint_angles=(math.pi / 2,))
 
-        joints = position.get_joint_positions()
+        joints = position.get_joint_positions(model)
 
         assert len(joints) == 2
         assert joints[0] == (0.0, 0.0)
@@ -31,9 +31,9 @@ class TestGetJointPositions:
     def test_two_links_straight(self):
         """Test two links in a straight line along x-axis."""
         model = RobotModel(link_lengths=(1.0, 1.0))
-        position = RobotPosition(model=model, joint_angles=(0.0, 0.0))
+        position = RobotPosition(joint_angles=(0.0, 0.0))
 
-        joints = position.get_joint_positions()
+        joints = position.get_joint_positions(model)
 
         assert len(joints) == 3  # Base + 2 joints
         assert joints[0] == (0.0, 0.0)
@@ -43,9 +43,9 @@ class TestGetJointPositions:
     def test_two_links_right_angle(self):
         """Test two links forming a right angle (L-shape)."""
         model = RobotModel(link_lengths=(1.0, 1.0))
-        position = RobotPosition(model=model, joint_angles=(0.0, math.pi / 2))
+        position = RobotPosition(joint_angles=(0.0, math.pi / 2))
 
-        joints = position.get_joint_positions()
+        joints = position.get_joint_positions(model)
 
         assert len(joints) == 3
         assert joints[0] == (0.0, 0.0)
@@ -57,11 +57,10 @@ class TestGetJointPositions:
         model = RobotModel(link_lengths=(1.0, 1.0, 1.0))
         # First link at 0°, second at +45°, third at -90°
         position = RobotPosition(
-            model=model,
             joint_angles=(0.0, math.pi / 4, -math.pi / 2)
         )
 
-        joints = position.get_joint_positions()
+        joints = position.get_joint_positions(model)
 
         assert len(joints) == 4
         assert joints[0] == (0.0, 0.0)
@@ -83,9 +82,9 @@ class TestGetJointPositions:
             link_lengths=(1.0, 1.0),
             joint_origins=(math.pi / 4, 0.0)  # First joint has 45° offset
         )
-        position = RobotPosition(model=model, joint_angles=(0.0, 0.0))
+        position = RobotPosition(joint_angles=(0.0, 0.0))
 
-        joints = position.get_joint_positions()
+        joints = position.get_joint_positions(model)
 
         assert len(joints) == 3
         assert joints[0] == (0.0, 0.0)
@@ -101,9 +100,9 @@ class TestGetJointPositions:
     def test_different_link_lengths(self):
         """Test robot with different link lengths."""
         model = RobotModel(link_lengths=(2.0, 1.5, 0.5))
-        position = RobotPosition(model=model, joint_angles=(0.0, 0.0, 0.0))
+        position = RobotPosition(joint_angles=(0.0, 0.0, 0.0))
 
-        joints = position.get_joint_positions()
+        joints = position.get_joint_positions(model)
 
         assert len(joints) == 4
         assert joints[0] == (0.0, 0.0)
@@ -114,9 +113,9 @@ class TestGetJointPositions:
     def test_full_rotation(self):
         """Test that a 360° rotation returns to the same relative position."""
         model = RobotModel(link_lengths=(1.0, 1.0))
-        position = RobotPosition(model=model, joint_angles=(0.0, 2 * math.pi))
+        position = RobotPosition(joint_angles=(0.0, 2 * math.pi))
 
-        joints = position.get_joint_positions()
+        joints = position.get_joint_positions(model)
 
         # Second link should complete a full rotation and point along x-axis
         assert joints[2] == pytest.approx((2.0, 0.0))
@@ -124,9 +123,9 @@ class TestGetJointPositions:
     def test_negative_angles(self):
         """Test that negative angles work correctly (clockwise rotation)."""
         model = RobotModel(link_lengths=(1.0, 1.0))
-        position = RobotPosition(model=model, joint_angles=(0.0, -math.pi / 2))
+        position = RobotPosition(joint_angles=(0.0, -math.pi / 2))
 
-        joints = position.get_joint_positions()
+        joints = position.get_joint_positions(model)
 
         assert len(joints) == 3
         assert joints[0] == (0.0, 0.0)
@@ -140,11 +139,10 @@ class TestGetJointPositions:
             joint_origins=(math.pi / 6, -math.pi / 6)  # 30° and -30° offsets
         )
         position = RobotPosition(
-            model=model,
             joint_angles=(math.pi / 6, math.pi / 3)  # 30° and 60° angles
         )
 
-        joints = position.get_joint_positions()
+        joints = position.get_joint_positions(model)
 
         assert len(joints) == 3
         assert joints[0] == (0.0, 0.0)

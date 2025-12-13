@@ -26,13 +26,11 @@ class RobotPosition:
     """Defines the current joint rotation values of the 2d robot, relative to the joint origin defined in RobotModel. Includes a method to calculate the joint positions."""
     joint_angles: tuple[float, ...]  # Current rotation angle for each joint (radians)
 
-    def __post_init__(self):
-        # Validate that we have the correct number of joint angles
-        if len(self.joint_angles) != len(self.model.link_lengths):
-            raise ValueError(f"Number of joint angles ({len(self.joint_angles)}) must match number of links ({len(self.model.link_lengths)})")
-
-    def get_joint_positions(self) -> List[Position]:
+    def get_joint_positions(self, model: 'RobotModel') -> List[Position]:
         """Calculate the (x, y) position of each joint in the chain.
+
+        Args:
+            model: The RobotModel defining link lengths and joint origins
 
         Returns:
             A list of (x, y) tuples representing the position of each joint,
@@ -43,7 +41,7 @@ class RobotPosition:
         cumulative_angle = 0.0
 
         for link_length, joint_angle, joint_origin in zip(
-            self.model.link_lengths, self.joint_angles, self.model.joint_origins
+            model.link_lengths, self.joint_angles, model.joint_origins
         ):
             # Add the joint angle (relative) and joint origin (offset) to cumulative angle
             cumulative_angle += joint_angle + joint_origin
@@ -58,5 +56,6 @@ class RobotPosition:
 
 @dataclass(frozen=True)
 class RobotState:
+    model: RobotModel
     position: RobotPosition
     desired_end_effector : Optional[Position] = None
