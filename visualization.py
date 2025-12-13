@@ -6,7 +6,10 @@ from matplotlib.patches import Circle
 from matplotlib.lines import Line2D
 import matplotlib.animation as animation
 from datamodel import RobotModel, RobotPosition, RobotState
-from typing import Callable, Iterable, List, Optional, Sequence
+from typing import Callable, List, Optional, Sequence
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class RobotVisualizer:
@@ -55,7 +58,9 @@ class RobotVisualizer:
 
         # Set up click event handling
         if self.click_callback:
-            self._click_handler_id = self.fig.canvas.mpl_connect("button_press_event", self._on_click)
+            self._click_handler_id = self.fig.canvas.mpl_connect(
+                "button_press_event", self._on_click
+            )
 
         # Initial draw
         self._setup_plot_elements()
@@ -79,8 +84,8 @@ class RobotVisualizer:
             self.ax.add_line(line)
             self.link_lines.append(line)
 
-        # Create joint circles (including base)
-        for i in range(num_links):
+        # Create joint circles (including base and end)
+        for i in range(num_links + 1):
             circle = Circle((0, 0), self.joint_radius, color="red", fill=True, zorder=2)
             self.ax.add_patch(circle)
             self.joint_circles.append(circle)
@@ -103,10 +108,6 @@ class RobotVisualizer:
 
     def _on_click(self, event):
         """Handle mouse click events."""
-        # Debug: Print when any click is detected
-        import sys
-        print(f"[DEBUG] Click event received: inaxes={event.inaxes == self.ax}, x={event.xdata}, y={event.ydata}", file=sys.stderr, flush=True)
-
         if (
             event.inaxes == self.ax
             and event.xdata is not None
@@ -115,7 +116,7 @@ class RobotVisualizer:
             if self.click_callback:
                 self.click_callback(event.xdata, event.ydata)
             else:
-                print(f"[DEBUG] No callback registered!", file=sys.stderr, flush=True)
+                logger.warning(f"No callback registered!")
 
     def update(self, robot_state: RobotState):
         """Update the visualization with a new robot position.
@@ -129,14 +130,13 @@ class RobotVisualizer:
         positions = robot_state.get_joint_positions()
 
         # Update link lines
-        for i, line in enumerate(self.link_lines):
-            x_data = [positions[i][0], positions[i + 1][0]]
-            y_data = [positions[i][1], positions[i + 1][1]]
+        for line, fr, to in zip(self.link_lines, positions, positions[1:]):
+            x_data = [fr[0], to[0]]
+            y_data = [fr[1], to[1]]
             line.set_data(x_data, y_data)
 
-        # Update joint circles (skip the last position, that's the end effector)
-        for i, circle in enumerate(self.joint_circles):
-            circle.center = positions[i]
+        for circle, pos in zip(self.joint_circles, positions):
+            circle.center = pos
 
         # Update end effector
         if self.end_effector_circle:
@@ -193,8 +193,10 @@ class RobotVisualizer:
         """
         self.click_callback = callback
         # Ensure the event handler is connected
-        if not hasattr(self, '_click_handler_id'):
-            self._click_handler_id = self.fig.canvas.mpl_connect("button_press_event", self._on_click)
+        if not hasattr(self, "_click_handler_id"):
+            self._click_handler_id = self.fig.canvas.mpl_connect(
+                "button_press_event", self._on_click
+            )
 
 
 # Example usage
