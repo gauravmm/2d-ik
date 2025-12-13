@@ -27,6 +27,33 @@ To achieve this, we write:
     4. evaluate these for correctness and performance
 
 
+## Usage
+
+### Interactive IK Solver Demo
+
+Run the interactive solver to visualize and test the IK system:
+
+```bash
+source ~/.pyenv/versions/ik2d/bin/activate
+python symbolic.py
+```
+
+This will open a matplotlib window with a 3-link robot arm. Click anywhere in the window to set a target position, and the robot will solve inverse kinematics to reach that point. The green circle shows the target position, and the console displays the solution joint angles and position error.
+
+### Running Tests
+
+Test the forward kinematics implementation:
+```bash
+source ~/.pyenv/versions/ik2d/bin/activate
+pytest test_datamodel.py
+```
+
+Test the symbolic IK solver:
+```bash
+source ~/.pyenv/versions/ik2d/bin/activate
+python test_symbolic_ik.py
+```
+
 ## AI Use
 
 All this is implemented with extensive use of Anthropic's Claude 4.5. A key purpose of this is to evaluate the use of AI on a simple (Undergrad-level) IK problem requring generalization from its training corpus.

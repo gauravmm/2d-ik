@@ -50,7 +50,9 @@ class IKSymbolic:
         distance_squared_simplified = sp.simplify(distance_squared)
 
         # Compute the gradient (derivative with respect to each joint angle)
-        gradient = [sp.diff(distance_squared_simplified, theta) for theta in self.theta_symbols]
+        gradient = [
+            sp.diff(distance_squared_simplified, theta) for theta in self.theta_symbols
+        ]
         gradient_simplified = [sp.simplify(g) for g in gradient]
 
         # Convert to numerical functions
@@ -58,14 +60,14 @@ class IKSymbolic:
         self.distance_func = sp.lambdify(
             [target_x, target_y] + list(self.theta_symbols),
             distance_squared_simplified,
-            "numpy"
+            "numpy",
         )
 
         # Gradient function takes (target_x, target_y, theta0, theta1, ...)
         self.gradient_func = sp.lambdify(
             [target_x, target_y] + list(self.theta_symbols),
             gradient_simplified,
-            "numpy"
+            "numpy",
         )
 
     def __call__(self, state: RobotState) -> RobotPosition:
@@ -100,7 +102,65 @@ class IKSymbolic:
 
         return RobotPosition(joint_angles=joint_angles)
 
-if __name__ == "__init__":
-    # TODO: Use the RobotVisualizer class to generate an interactive solver.
-    # each time a person generates a click callback, update the desired end effector position
-    # to match and use the solver to find a new solution for it.
+
+if __name__ == "__main__":
+    # Interactive IK solver demo using RobotVisualizer
+    import math
+    from visualization import RobotVisualizer
+
+    # Create a 3-link robot
+    model = RobotModel(link_lengths=(1.0, 0.8, 0.6))
+
+    # Create the IK solver
+    ik_solver = IKSymbolic(model)
+
+    # Initial position
+    initial_position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
+    global current_state
+    current_state = RobotState(model, initial_position, None)
+
+    # Create visualizer
+    viz = RobotVisualizer(current_state)
+
+    # Click callback that updates the target and solves IK
+    def on_click(x: float, y: float):
+        global current_state
+        print(f"\nClicked at: ({x:.2f}, {y:.2f})")
+
+        # Update the desired end effector position
+        new_state = RobotState(model, current_state.current, (x, y))
+
+        # Solve IK
+        try:
+            solution = ik_solver(new_state)
+            print(
+                f"Solution joint angles: {tuple(f'{a:.3f}' for a in solution.joint_angles)}"
+            )
+
+            # Verify the solution
+            end_effector_positions = model.forward_kinematics(solution)
+            end_effector = end_effector_positions[-1]
+            error = math.sqrt((end_effector[0] - x) ** 2 + (end_effector[1] - y) ** 2)
+            print(f"Achieved position: ({end_effector[0]:.3f}, {end_effector[1]:.3f})")
+            print(f"Position error: {error:.6f}")
+
+            # Update the visualization with the new solution
+            current_state = RobotState(model, solution, (x, y))
+            viz.update(current_state)
+
+        except Exception as e:
+            print(f"Error solving IK: {e}")
+
+    # Set the click callback
+    viz.set_click_callback(on_click)
+
+    print("Interactive IK Solver")
+    print("=" * 60)
+    print("Click anywhere in the window to set a target position.")
+    print("The robot will solve IK and move to reach that target.")
+    print("=" * 60)
+    print(f"Callback registered: {viz.click_callback is not None}")
+    print(f"Event handler connected: {hasattr(viz, '_click_handler_id')}")
+
+    # Show the visualization
+    viz.show()

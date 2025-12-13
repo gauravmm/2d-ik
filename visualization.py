@@ -55,7 +55,7 @@ class RobotVisualizer:
 
         # Set up click event handling
         if self.click_callback:
-            self.fig.canvas.mpl_connect("button_press_event", self._on_click)
+            self._click_handler_id = self.fig.canvas.mpl_connect("button_press_event", self._on_click)
 
         # Initial draw
         self._setup_plot_elements()
@@ -103,6 +103,10 @@ class RobotVisualizer:
 
     def _on_click(self, event):
         """Handle mouse click events."""
+        # Debug: Print when any click is detected
+        import sys
+        print(f"[DEBUG] Click event received: inaxes={event.inaxes == self.ax}, x={event.xdata}, y={event.ydata}", file=sys.stderr, flush=True)
+
         if (
             event.inaxes == self.ax
             and event.xdata is not None
@@ -110,6 +114,8 @@ class RobotVisualizer:
         ):
             if self.click_callback:
                 self.click_callback(event.xdata, event.ydata)
+            else:
+                print(f"[DEBUG] No callback registered!", file=sys.stderr, flush=True)
 
     def update(self, robot_state: RobotState):
         """Update the visualization with a new robot position.
@@ -186,6 +192,9 @@ class RobotVisualizer:
             callback: Function that receives (x, y) coordinates on click
         """
         self.click_callback = callback
+        # Ensure the event handler is connected
+        if not hasattr(self, '_click_handler_id'):
+            self._click_handler_id = self.fig.canvas.mpl_connect("button_press_event", self._on_click)
 
 
 # Example usage
