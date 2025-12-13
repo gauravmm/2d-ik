@@ -7,8 +7,10 @@ This repository implements and validates a simple IK solver and motion planner f
 
 We begin with these key assumptions:
 
-1. Simple world geometry/exclusion zones.
-2. No dynamic self-intersection (due to nested design on robot hardware)
+1. Very simple robot design
+    a. No dynamic self-intersection (nested robot design)
+    b. all rigid links are collinear (can be represented as a line)
+2. Simple world geometry/exclusion zones.
 3. Quasi-static motion (i.e. motion can be paused at any time.)
 4. End effector must be controllable in both position and orientation.
 
@@ -28,3 +30,6 @@ To achieve this, we write:
 ## AI Use
 
 All this is implemented with extensive use of Anthropic's Claude 4.5. A key purpose of this is to evaluate the use of AI on a simple (Undergrad-level) IK problem requring generalization from its training corpus.
+
+I wrote this with Claude Sonnet 4.5, which is incredible! It required a little strategic prompting, but generally acted like a mid-level developer with a caffeine addiction. It came up with the data model and forward kinematics easily, and was able to debug issues with the visualization code much quicker than me. (The issue it both caused and debugged was that matplotlib's animation functions require the artists to be drawn on first initialization.)
+
