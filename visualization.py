@@ -109,7 +109,7 @@ class RobotVisualizer:
         self.robot_state = robot_state
 
         # Get joint positions
-        positions = robot_state.position.get_joint_positions(robot_state.model)
+        positions = robot_state.get_joint_positions()
 
         # Update link lines
         for i, line in enumerate(self.link_lines):

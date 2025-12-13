@@ -19,18 +19,11 @@ class RobotModel:
         if not self.joint_origins:
             object.__setattr__(self, 'joint_origins', tuple(0.0 for _ in self.link_lengths))
 
-Position = Tuple[float, float]
-
-@dataclass(frozen=True)
-class RobotPosition:
-    """Defines the current joint rotation values of the 2d robot, relative to the joint origin defined in RobotModel. Includes a method to calculate the joint positions."""
-    joint_angles: tuple[float, ...]  # Current rotation angle for each joint (radians)
-
-    def get_joint_positions(self, model: 'RobotModel') -> List[Position]:
-        """Calculate the (x, y) position of each joint in the chain.
+    def forward_kinematics(self, position: 'RobotPosition') -> List['Position']:
+        """Calculate the (x, y) position of each joint in the chain using forward kinematics.
 
         Args:
-            model: The RobotModel defining link lengths and joint origins
+            position: The RobotPosition containing joint angles
 
         Returns:
             A list of (x, y) tuples representing the position of each joint,
@@ -41,7 +34,7 @@ class RobotPosition:
         cumulative_angle = 0.0
 
         for link_length, joint_angle, joint_origin in zip(
-            model.link_lengths, self.joint_angles, model.joint_origins
+            self.link_lengths, position.joint_angles, self.joint_origins
         ):
             # Add the joint angle (relative) and joint origin (offset) to cumulative angle
             cumulative_angle += joint_angle + joint_origin
@@ -54,8 +47,23 @@ class RobotPosition:
 
         return positions
 
+Position = Tuple[float, float]
+
+@dataclass(frozen=True)
+class RobotPosition:
+    """Defines the current joint rotation values of the 2d robot, relative to the joint origin defined in RobotModel."""
+    joint_angles: tuple[float, ...]  # Current rotation angle for each joint (radians)
+
 @dataclass(frozen=True)
 class RobotState:
     model: RobotModel
     position: RobotPosition
     desired_end_effector : Optional[Position] = None
+
+    def get_joint_positions(self) -> List[Position]:
+        """Convenience method to calculate joint positions using forward kinematics.
+
+        Returns:
+            A list of (x, y) tuples representing the position of each joint.
+        """
+        return self.model.forward_kinematics(self.position)

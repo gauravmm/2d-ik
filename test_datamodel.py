@@ -11,7 +11,7 @@ class TestGetJointPositions:
         model = RobotModel(link_lengths=(1.0,))
         position = RobotPosition(joint_angles=(0.0,))
 
-        joints = position.get_joint_positions(model)
+        joints = model.forward_kinematics(position)
 
         assert len(joints) == 2  # Base + end effector
         assert joints[0] == (0.0, 0.0)  # Base at origin
@@ -22,7 +22,7 @@ class TestGetJointPositions:
         model = RobotModel(link_lengths=(1.0,))
         position = RobotPosition(joint_angles=(math.pi / 2,))
 
-        joints = position.get_joint_positions(model)
+        joints = model.forward_kinematics(position)
 
         assert len(joints) == 2
         assert joints[0] == (0.0, 0.0)
@@ -33,7 +33,7 @@ class TestGetJointPositions:
         model = RobotModel(link_lengths=(1.0, 1.0))
         position = RobotPosition(joint_angles=(0.0, 0.0))
 
-        joints = position.get_joint_positions(model)
+        joints = model.forward_kinematics(position)
 
         assert len(joints) == 3  # Base + 2 joints
         assert joints[0] == (0.0, 0.0)
@@ -45,7 +45,7 @@ class TestGetJointPositions:
         model = RobotModel(link_lengths=(1.0, 1.0))
         position = RobotPosition(joint_angles=(0.0, math.pi / 2))
 
-        joints = position.get_joint_positions(model)
+        joints = model.forward_kinematics(position)
 
         assert len(joints) == 3
         assert joints[0] == (0.0, 0.0)
@@ -60,7 +60,7 @@ class TestGetJointPositions:
             joint_angles=(0.0, math.pi / 4, -math.pi / 2)
         )
 
-        joints = position.get_joint_positions(model)
+        joints = model.forward_kinematics(position)
 
         assert len(joints) == 4
         assert joints[0] == (0.0, 0.0)
@@ -84,7 +84,7 @@ class TestGetJointPositions:
         )
         position = RobotPosition(joint_angles=(0.0, 0.0))
 
-        joints = position.get_joint_positions(model)
+        joints = model.forward_kinematics(position)
 
         assert len(joints) == 3
         assert joints[0] == (0.0, 0.0)
@@ -102,7 +102,7 @@ class TestGetJointPositions:
         model = RobotModel(link_lengths=(2.0, 1.5, 0.5))
         position = RobotPosition(joint_angles=(0.0, 0.0, 0.0))
 
-        joints = position.get_joint_positions(model)
+        joints = model.forward_kinematics(position)
 
         assert len(joints) == 4
         assert joints[0] == (0.0, 0.0)
@@ -115,7 +115,7 @@ class TestGetJointPositions:
         model = RobotModel(link_lengths=(1.0, 1.0))
         position = RobotPosition(joint_angles=(0.0, 2 * math.pi))
 
-        joints = position.get_joint_positions(model)
+        joints = model.forward_kinematics(position)
 
         # Second link should complete a full rotation and point along x-axis
         assert joints[2] == pytest.approx((2.0, 0.0))
@@ -125,7 +125,7 @@ class TestGetJointPositions:
         model = RobotModel(link_lengths=(1.0, 1.0))
         position = RobotPosition(joint_angles=(0.0, -math.pi / 2))
 
-        joints = position.get_joint_positions(model)
+        joints = model.forward_kinematics(position)
 
         assert len(joints) == 3
         assert joints[0] == (0.0, 0.0)
@@ -142,7 +142,7 @@ class TestGetJointPositions:
             joint_angles=(math.pi / 6, math.pi / 3)  # 30° and 60° angles
         )
 
-        joints = position.get_joint_positions(model)
+        joints = model.forward_kinematics(position)
 
         assert len(joints) == 3
         assert joints[0] == (0.0, 0.0)
