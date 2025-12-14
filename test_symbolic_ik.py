@@ -38,7 +38,9 @@ def test_simple_two_link():
     print(f"Achieved end effector position: {end_effector}")
 
     # Check error
-    error = math.sqrt((end_effector[0] - target[0])**2 + (end_effector[1] - target[1])**2)
+    error = math.sqrt(
+        (end_effector[0] - target[0]) ** 2 + (end_effector[1] - target[1]) ** 2
+    )
     print(f"Position error: {error:.6f}")
 
     if error < 1e-3:
@@ -62,7 +64,7 @@ def test_three_link_robot():
     ik_solver = IKSymbolic(model)
 
     # Start from a configuration
-    initial_position = RobotPosition(joint_angles=(0.0, math.pi/4, -math.pi/4))
+    initial_position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
 
     # Target position
     target = (1.8, 0.8)
@@ -81,7 +83,9 @@ def test_three_link_robot():
     print(f"Achieved end effector position: {end_effector}")
 
     # Check error
-    error = math.sqrt((end_effector[0] - target[0])**2 + (end_effector[1] - target[1])**2)
+    error = math.sqrt(
+        (end_effector[0] - target[0]) ** 2 + (end_effector[1] - target[1]) ** 2
+    )
     print(f"Position error: {error:.6f}")
 
     if error < 1e-3:
@@ -125,8 +129,10 @@ def test_unreachable_target():
     print(f"Achieved end effector position: {end_effector}")
 
     # Check that we got as close as possible
-    distance_to_target = math.sqrt((end_effector[0] - target[0])**2 + (end_effector[1] - target[1])**2)
-    distance_from_origin = math.sqrt(end_effector[0]**2 + end_effector[1]**2)
+    distance_to_target = math.sqrt(
+        (end_effector[0] - target[0]) ** 2 + (end_effector[1] - target[1]) ** 2
+    )
+    distance_from_origin = math.sqrt(end_effector[0] ** 2 + end_effector[1] ** 2)
     max_reach = sum(model.link_lengths)
 
     print(f"Distance to target: {distance_to_target:.6f}")
