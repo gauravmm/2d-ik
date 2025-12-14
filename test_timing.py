@@ -22,40 +22,17 @@ import math
 import random
 from typing import Dict, List, Tuple, Any
 
+import numpy as np
+
 from datamodel import RobotModel, RobotPosition, RobotState
 from symbolic import IKSymbolic
-
-
-def generate_grid(
-    n_points: int,
-    bounds: Tuple[float, float, float, float],
-) -> List[Tuple[float, float]]:
-    """Generate a uniform grid of (x, y) points for testing.
-
-    Args:
-        n_points: Number of points per dimension (total = n_points^2)
-        bounds: (x_min, x_max, y_min, y_max) workspace bounds
-
-    Returns:
-        List of (x, y) target positions
-    """
-    x_min, x_max, y_min, y_max = bounds
-
-    # Generate linearly spaced points
-    x_vals = [x_min + (x_max - x_min) * i / (n_points - 1) for i in range(n_points)]
-    y_vals = [y_min + (y_max - y_min) * i / (n_points - 1) for i in range(n_points)]
-
-    # Create grid
-    grid_points = [(x, y) for x in x_vals for y in y_vals]
-
-    return grid_points
 
 
 def format_timing_summary(
     solver_init_time: float,
     warmup_times: List[float],
     solve_times: List[float],
-    grid_points: List[Tuple[float, float]],
+    grid_size: int,
     robot_config: Tuple[float, ...],
 ) -> str:
     """Format timing results as a human-readable summary string.
@@ -64,7 +41,7 @@ def format_timing_summary(
         solver_init_time: Time to initialize IKSymbolic solver (seconds)
         warmup_times: Individual warmup solve times (seconds)
         solve_times: Individual solve times for grid points (seconds)
-        grid_points: Target points tested
+        grid_size: Number of points per dimension
         robot_config: Link lengths of robot
 
     Returns:
@@ -104,8 +81,7 @@ def format_timing_summary(
             f"Warmup: {len(warmup_times)} iterations, mean: {warmup_mean:.4f}s"
         )
 
-    grid_size = int(math.sqrt(len(grid_points)))
-    summary.append(f"Grid: {grid_size}x{grid_size} = {len(grid_points)} points")
+    summary.append(f"Grid: {grid_size}x{grid_size} = {grid_size**2} points")
     summary.append("")
     summary.append("Solve Time Statistics:")
     summary.append(f"  Mean:     {mean_solve:.4f}s")
@@ -150,7 +126,7 @@ def time_ik_grid_solve(
         - solver_init_time: Time to initialize solver (seconds)
         - warmup_times: List of warmup solve times (seconds)
         - solve_times: List of grid solve times (seconds)
-        - grid_points: List of (x, y) target points
+        - grid_size: Grid size (n_points per dimension)
         - robot_config: Tuple of link lengths
     """
     # Step 1: Create robot model
@@ -166,17 +142,23 @@ def time_ik_grid_solve(
     bounds = sum(model.link_lengths) * coverage_ratio
 
     # Step 4: Generate grid of target points
-    grid_points = generate_grid(grid_size, (-bounds, bounds, -bounds, bounds))
+    x_coords, y_coords = np.meshgrid(
+        np.linspace(-bounds, -bounds, n_points), np.linspace(-bounds, -bounds, n_points)
+    )
+    x_coords = x_coords.ravel()
+    y_coords = y_coords.ravel()
+    n_points = len(x_coords)
 
     # Step 5: Perform warmup
     warmup_times = []
     if warmup_iterations > 0:
         # Use random subset of grid points for warmup
-        warmup_points = random.sample(
-            grid_points, min(warmup_iterations, len(grid_points))
+        warmup_indices = random.sample(
+            range(n_points), min(warmup_iterations, n_points)
         )
 
-        for target in warmup_points:
+        for idx in warmup_indices:
+            target = (float(x_coords[idx]), float(y_coords[idx]))
             # Create zero initial position
             zero_position = RobotPosition(joint_angles=tuple(0.0 for _ in link_lengths))
             state = RobotState(model, zero_position, target)
@@ -190,10 +172,10 @@ def time_ik_grid_solve(
 
     # Step 6: Measure grid solves
     solve_times = []
+    zero_position = RobotPosition(joint_angles=tuple(0.0 for _ in link_lengths))
 
-    for target in grid_points:
-        # Create zero initial position for each solve
-        zero_position = RobotPosition(joint_angles=tuple(0.0 for _ in link_lengths))
+    for idx in range(n_points):
+        target = (float(x_coords[idx]), float(y_coords[idx]))
         state = RobotState(model, zero_position, target)
 
         # Time the solve operation
@@ -208,7 +190,7 @@ def time_ik_grid_solve(
         "solver_init_time": solver_init_time,
         "warmup_times": warmup_times,
         "solve_times": solve_times,
-        "grid_points": grid_points,
+        "grid_size": grid_size,
         "robot_config": link_lengths,
     }
 
@@ -229,7 +211,7 @@ def test_three_link_timing():
     assert (
         results["solver_init_time"] < 10.0
     ), f"Solver init time {results['solver_init_time']:.3f}s exceeds 10s"
-    assert len(results["solve_times"]) == 225, "Expected 225 grid points"
+    assert len(results["solve_times"]) == 15**2, "Expected 225 grid points"
 
 
 def test_single_solve_timing():
@@ -276,7 +258,7 @@ def test_unreachable_targets_timing():
 
     # Generate points outside max reach (1.2x max reach)
     unreachable_bound = max_reach * 1.2
-    unreachable_points = generate_grid(
+    x_coords, y_coords = generate_grid(
         n_points=10,
         bounds=(
             -unreachable_bound,
@@ -290,7 +272,8 @@ def test_unreachable_targets_timing():
     zero_position = RobotPosition(joint_angles=(0.0, 0.0, 0.0))
 
     unreachable_times = []
-    for target in unreachable_points:
+    for idx in range(len(x_coords)):
+        target = (float(x_coords[idx]), float(y_coords[idx]))
         state = RobotState(model, zero_position, target)
 
         start = time.perf_counter()
