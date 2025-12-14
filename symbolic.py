@@ -1,7 +1,7 @@
 #!python3
 
 import sympy as sp
-from typing import Any, Callable, Tuple
+from typing import Any, Callable, Literal, Tuple
 
 from datamodel import Position, RobotModel, RobotPosition, RobotState
 
@@ -23,6 +23,8 @@ class IKSymbolic:
         # Create symbolic variables for target position
         target_x = sp.Symbol("target_x", real=True)
         target_y = sp.Symbol("target_y", real=True)
+        target_angle = sp.Symbol("target_angle", real=True)
+        angle_weight = sp.Symbol("angle_weight", real=True, positive=True)
 
         # Build symbolic forward kinematics equations
         x_sym: sp.Expr = sp.Float(0)
@@ -43,30 +45,51 @@ class IKSymbolic:
         self.end_effector_x: sp.Expr = x_sym
         self.end_effector_y: sp.Expr = y_sym
 
+        # Store the symbolic end effector orientation
+        self.end_effector_angle: sp.Expr = cumulative_angle
+
         # Create distance squared function
         distance_squared = (x_sym - target_x) ** 2 + (y_sym - target_y) ** 2
 
-        # Simplify the distance function
-        distance_squared_simplified = sp.simplify(distance_squared)
+        # Create angle error with wrapping (shortest angular distance)
+        # Using atan2(sin(diff), cos(diff)) ensures smooth wrapping to [-π, π]
+        angle_diff = self.end_effector_angle - target_angle
+        angle_error = sp.atan2(sp.sin(angle_diff), sp.cos(angle_diff))
+        angle_error_squared = angle_error**2
+
+        # Combined objective: position error + weighted angle error
+        # When angle_weight = 0, this reduces to position-only optimization
+        combined_objective = distance_squared + angle_weight * angle_error_squared
+
+        # Simplify the combined objective function
+        combined_objective_simplified = sp.simplify(combined_objective)
 
         # Compute the gradient (derivative with respect to each joint angle)
         gradient = [
-            sp.diff(distance_squared_simplified, theta) for theta in self.theta_symbols
+            sp.diff(combined_objective_simplified, theta)
+            for theta in self.theta_symbols
         ]
         gradient_simplified = [sp.simplify(g) for g in gradient]
 
         # Convert to numerical functions
-        # Distance function takes (target_x, target_y, theta0, theta1, ...)
-        self.distance_func = sp.lambdify(
-            [target_x, target_y] + list(self.theta_symbols),
-            distance_squared_simplified,
+        # Objective function takes (target_x, target_y, target_angle, angle_weight, theta0, theta1, ...)
+        self.combined_objective_func = sp.lambdify(
+            [target_x, target_y, target_angle, angle_weight] + list(self.theta_symbols),
+            combined_objective_simplified,
             "numpy",
         )
 
-        # Gradient function takes (target_x, target_y, theta0, theta1, ...)
-        self.gradient_func = sp.lambdify(
-            [target_x, target_y] + list(self.theta_symbols),
+        # Gradient function takes (target_x, target_y, target_angle, angle_weight, theta0, theta1, ...)
+        self.combined_gradient_func = sp.lambdify(
+            [target_x, target_y, target_angle, angle_weight] + list(self.theta_symbols),
             gradient_simplified,
+            "numpy",
+        )
+
+        # Function to compute end effector angle for verification
+        self.angle_func = sp.lambdify(
+            list(self.theta_symbols),
+            self.end_effector_angle,
             "numpy",
         )
 
@@ -81,18 +104,37 @@ class IKSymbolic:
 
         target_x, target_y = state.desired_end_effector
 
+        # Extract angle constraint if present
+        if state.desired_end_effector_angle is not None:
+            target_angle = state.desired_end_effector_angle
+            # Default angle weight - could be made configurable via RobotModel
+            angle_weight = 1.0e3
+        else:
+            # No angle constraint - use dummy values with zero weight
+            target_angle = 0.0  # Dummy value, won't affect optimization
+            angle_weight = 0.0  # Zero weight disables angle constraint
+
         # Use scipy for optimization with precomputed distance and gradient functions
         from scipy.optimize import minimize
 
         # Initial guess from current state
         x0 = list(state.current.joint_angles)
 
-        # Define objective function and gradient with fixed target
+        # Define objective function and gradient with fixed target and weight
         def objective(thetas):
-            return self.distance_func(target_x, target_y, *thetas)
+            return self.combined_objective_func(
+                target_x, target_y, target_angle, angle_weight, *thetas
+            )
 
         def gradient(thetas):
-            return self.gradient_func(target_x, target_y, *thetas)
+            grad_result = self.combined_gradient_func(
+                target_x, target_y, target_angle, angle_weight, *thetas
+            )
+            # Handle case where gradient might be a single value (1 joint) or array
+            if hasattr(grad_result, "__iter__"):
+                return grad_result
+            else:
+                return [grad_result]
 
         # Minimize distance to target using BFGS with analytical gradient
         result = minimize(objective, x0, method="BFGS", jac=gradient)
@@ -123,29 +165,32 @@ if __name__ == "__main__":
     viz = RobotVisualizer(current_state)
 
     # Click callback that updates the target and solves IK
-    def on_click(x: float, y: float):
+    def on_click(x: float, y: float, btn: Literal["left", "right"]):
         global current_state
-        print(f"\nClicked at: ({x:.2f}, {y:.2f})")
+        print(f"\nClicked at: ({x:.2f}, {y:.2f}) {btn}")
+
+        new_end_effector_angle = current_state.desired_end_effector_angle
+        if btn == "right":
+            new_end_effector_angle = 0.0 if new_end_effector_angle is None else None
 
         # Update the desired end effector position
-        new_state = RobotState(model, current_state.current, (x, y))
+        new_state = RobotState(
+            model, current_state.current, (x, y), new_end_effector_angle
+        )
 
         # Solve IK
         try:
             solution = ik_solver(new_state)
-            print(
-                f"Solution joint angles: {tuple(f'{a:.3f}' for a in solution.joint_angles)}"
-            )
+            print(f"Solution: {tuple(f'{a:.3f}' for a in solution.joint_angles)}")
 
             # Verify the solution
             end_effector_positions = model.forward_kinematics(solution)
             end_effector = end_effector_positions[-1]
             error = math.sqrt((end_effector[0] - x) ** 2 + (end_effector[1] - y) ** 2)
-            print(f"Achieved position: ({end_effector[0]:.3f}, {end_effector[1]:.3f})")
             print(f"Position error: {error:.6f}")
 
             # Update the visualization with the new solution
-            current_state = RobotState(model, solution, (x, y))
+            current_state = RobotState(model, solution, (x, y), new_end_effector_angle)
             viz.update(current_state)
 
         except Exception as e:

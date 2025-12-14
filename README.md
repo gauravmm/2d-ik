@@ -2,7 +2,6 @@
 
 This repository implements and validates a simple IK solver and motion planner for a pseudo-2D robot arm that exists to load and unload plates from a 3d printer.
 
-
 ## Technical architecture
 
 We begin with these key assumptions:
@@ -15,17 +14,17 @@ We begin with these key assumptions:
 4. End effector must be controllable in both position and orientation.
 
 To achieve this, we write:
-    1. a super-simple data model
-    2. simulator, including intersection checking,
-    3. three solvers:
-        a `sympy`-based,
-        b. jacobian-based, and
-        c. a FABRIK-based IK solver
-    4. a simple trajectory interpolator that "chops up" the overall motion into segments:
-        a. subject to maximum constraints
-        b. avoiding collisions
-    4. evaluate these for correctness and performance
 
+1. a super-simple data model
+2. simulator, including intersection checking,
+3. three solvers:
+    a `sympy`-based,
+    b. jacobian-based, and
+    c. a FABRIK-based IK solver
+4. a simple trajectory interpolator that "chops up" the overall motion into segments:
+    a. subject to maximum constraints
+    b. avoiding collisions
+5. evaluate these for correctness and performance
 
 ## Usage
 
@@ -43,12 +42,14 @@ This will open a matplotlib window with a 3-link robot arm. Click anywhere in th
 ### Running Tests
 
 Test the forward kinematics implementation:
+
 ```bash
 source ~/.pyenv/versions/ik2d/bin/activate
 pytest test_datamodel.py
 ```
 
 Test the symbolic IK solver:
+
 ```bash
 source ~/.pyenv/versions/ik2d/bin/activate
 python test_symbolic_ik.py
@@ -60,3 +61,6 @@ All this is implemented with extensive use of Anthropic's Claude 4.5. A key purp
 
 I wrote this with Claude Sonnet 4.5, which is incredible! It required a little strategic prompting, but generally acted like a mid-level developer with a caffeine addiction. It came up with the data model and forward kinematics easily, and was able to debug issues with the visualization code much quicker than me. (The issue it both caused and debugged was that matplotlib's animation functions require the artists to be drawn on first initialization.)
 
+## Instructions for AI Agent
+
+Activate the pyenv environment `ik2d` before running any code.
