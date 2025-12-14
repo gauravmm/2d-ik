@@ -17,7 +17,7 @@ import statistics
 import math
 import random
 from dataclasses import dataclass
-from typing import List, Tuple, Literal
+from typing import List, Optional, Tuple, Literal
 
 import matplotlib.figure
 import numpy as np
@@ -168,6 +168,7 @@ Total grid time: {total_time:.2f}s
 def time_ik_grid_solve(
     link_lengths: Tuple[float, ...],
     grid_size: int = 15,
+    locked_ee_angle: Optional[float] = None,
     warmup_iterations: int = 5,
     coverage_ratio: float = 0.8,
 ) -> TimingResults:
@@ -224,7 +225,7 @@ def time_ik_grid_solve(
             target = (float(x_coords[idx]), float(y_coords[idx]))
             # Create zero initial position
             zero_position = RobotPosition(joint_angles=tuple(0.0 for _ in link_lengths))
-            state = RobotState(model, zero_position, target)
+            state = RobotState(model, zero_position, target, locked_ee_angle)
 
             # Time the solve
             start = time.perf_counter()
@@ -239,7 +240,7 @@ def time_ik_grid_solve(
     zero_position = RobotPosition(joint_angles=tuple(0.0 for _ in link_lengths))
 
     for target in zip(x_coords, y_coords):
-        state = RobotState(model, zero_position, target)
+        state = RobotState(model, zero_position, target, locked_ee_angle)
 
         # Time the solve operation
         start = time.perf_counter()
@@ -268,11 +269,14 @@ def time_ik_grid_solve(
     )
 
 
-def test_three_link_timing(link_lengths=(1.0, 0.8, 0.6), grid_size=15):
+def test_three_link_timing(
+    link_lengths=(1.0, 0.8, 0.6), grid_size=15, locked_ee_angle: Optional[float] = None
+):
     """Test timing for a three-link robot configuration (required test)."""
     results = time_ik_grid_solve(
         link_lengths=link_lengths,
         grid_size=grid_size,
+        locked_ee_angle=locked_ee_angle,
         warmup_iterations=5,
     )
 
@@ -330,8 +334,8 @@ def evaluate_robot_complexity_scaling():
 if __name__ == "__main__":
     print("Running timing tests...")
     # evaluate_robot_complexity_scaling()
-    results = test_three_link_timing(grid_size=50)
+    results = test_three_link_timing(grid_size=50, locked_ee_angle=0.0)
 
-    fig = plot_solve_heatmap(results, "time")
+    fig = plot_solve_heatmap(results, "error")
     fig.show()
     plt.show()

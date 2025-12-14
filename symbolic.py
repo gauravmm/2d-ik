@@ -181,19 +181,16 @@ if __name__ == "__main__":
         # Solve IK
         try:
             solution = ik_solver(new_state)
-            print(
-                f"Solution joint angles: {tuple(f'{a:.3f}' for a in solution.joint_angles)}"
-            )
+            print(f"Solution: {tuple(f'{a:.3f}' for a in solution.joint_angles)}")
 
             # Verify the solution
             end_effector_positions = model.forward_kinematics(solution)
             end_effector = end_effector_positions[-1]
             error = math.sqrt((end_effector[0] - x) ** 2 + (end_effector[1] - y) ** 2)
-            print(f"Achieved position: ({end_effector[0]:.3f}, {end_effector[1]:.3f})")
             print(f"Position error: {error:.6f}")
 
             # Update the visualization with the new solution
-            current_state = RobotState(model, solution, (x, y))
+            current_state = RobotState(model, solution, (x, y), new_end_effector_angle)
             viz.update(current_state)
 
         except Exception as e:
