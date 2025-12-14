@@ -105,8 +105,8 @@ class IKSymbolic:
         target_x, target_y = state.desired_end_effector
 
         # Extract angle constraint if present
-        if state.current.end_effector_angle is not None:
-            target_angle = state.current.end_effector_angle
+        if state.desired_end_effector_angle is not None:
+            target_angle = state.desired_end_effector_angle
             # Default angle weight - could be made configurable via RobotModel
             angle_weight = 1.0e3
         else:
@@ -142,10 +142,7 @@ class IKSymbolic:
         # Extract joint angles from solution
         joint_angles = tuple(float(angle) for angle in result.x)
 
-        return RobotPosition(
-            joint_angles=joint_angles,
-            end_effector_angle=state.current.end_effector_angle,
-        )
+        return RobotPosition(joint_angles=joint_angles)
 
 
 if __name__ == "__main__":
@@ -172,8 +169,14 @@ if __name__ == "__main__":
         global current_state
         print(f"\nClicked at: ({x:.2f}, {y:.2f}) {btn}")
 
+        new_end_effector_angle = current_state.desired_end_effector_angle
+        if btn == "right":
+            new_end_effector_angle = 0.0 if new_end_effector_angle is None else None
+
         # Update the desired end effector position
-        new_state = RobotState(model, current_state.current, (x, y))
+        new_state = RobotState(
+            model, current_state.current, (x, y), new_end_effector_angle
+        )
 
         # Solve IK
         try:
