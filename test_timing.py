@@ -20,95 +20,10 @@ import time
 import statistics
 import math
 import random
-from dataclasses import dataclass
-from typing import List, Tuple
+from typing import Dict, List, Tuple, Any
 
 from datamodel import RobotModel, RobotPosition, RobotState
 from symbolic import IKSymbolic
-
-
-@dataclass
-class TimingResults:
-    """Container for timing test results.
-
-    Attributes:
-        solver_init_time: Time to initialize IKSymbolic solver (seconds)
-        warmup_times: Individual warmup solve times (seconds)
-        solve_times: Individual solve times for grid points (seconds)
-        grid_points: Target points tested
-        robot_config: Link lengths of robot
-    """
-    solver_init_time: float
-    warmup_times: List[float]
-    solve_times: List[float]
-    grid_points: List[Tuple[float, float]]
-    robot_config: Tuple[float, ...]
-
-    @property
-    def mean_solve_time(self) -> float:
-        """Mean solve time across all grid points."""
-        return statistics.mean(self.solve_times) if self.solve_times else 0.0
-
-    @property
-    def median_solve_time(self) -> float:
-        """Median solve time."""
-        return statistics.median(self.solve_times) if self.solve_times else 0.0
-
-    @property
-    def std_dev(self) -> float:
-        """Standard deviation of solve times."""
-        return statistics.stdev(self.solve_times) if len(self.solve_times) > 1 else 0.0
-
-    @property
-    def min_time(self) -> float:
-        """Minimum solve time."""
-        return min(self.solve_times) if self.solve_times else 0.0
-
-    @property
-    def max_time(self) -> float:
-        """Maximum solve time."""
-        return max(self.solve_times) if self.solve_times else 0.0
-
-    @property
-    def p95(self) -> float:
-        """95th percentile solve time."""
-        if len(self.solve_times) < 20:
-            return self.max_time
-        sorted_times = sorted(self.solve_times)
-        idx = int(len(sorted_times) * 0.95)
-        return sorted_times[idx]
-
-    @property
-    def p99(self) -> float:
-        """99th percentile solve time."""
-        if len(self.solve_times) < 100:
-            return self.max_time
-        sorted_times = sorted(self.solve_times)
-        idx = int(len(sorted_times) * 0.99)
-        return sorted_times[idx]
-
-    @property
-    def total_time(self) -> float:
-        """Total time for all grid solves."""
-        return sum(self.solve_times)
-
-
-def calculate_workspace_bounds(
-    model: RobotModel,
-    coverage_ratio: float = 0.8
-) -> Tuple[float, float, float, float]:
-    """Calculate reasonable workspace bounds for a robot model.
-
-    Args:
-        model: The robot model
-        coverage_ratio: Fraction of max reach to use (0.8 = 80%)
-
-    Returns:
-        (x_min, x_max, y_min, y_max) bounds
-    """
-    max_reach = sum(model.link_lengths)
-    bound = max_reach * coverage_ratio
-    return (-bound, bound, -bound, bound)
 
 
 def generate_grid(
@@ -136,38 +51,73 @@ def generate_grid(
     return grid_points
 
 
-def format_timing_summary(results: TimingResults) -> str:
+def format_timing_summary(
+    solver_init_time: float,
+    warmup_times: List[float],
+    solve_times: List[float],
+    grid_points: List[Tuple[float, float]],
+    robot_config: Tuple[float, ...],
+) -> str:
     """Format timing results as a human-readable summary string.
 
     Args:
-        results: TimingResults to format
+        solver_init_time: Time to initialize IKSymbolic solver (seconds)
+        warmup_times: Individual warmup solve times (seconds)
+        solve_times: Individual solve times for grid points (seconds)
+        grid_points: Target points tested
+        robot_config: Link lengths of robot
 
     Returns:
         Formatted string with statistics
     """
+    # Calculate statistics
+    mean_solve = statistics.mean(solve_times) if solve_times else 0.0
+    median_solve = statistics.median(solve_times) if solve_times else 0.0
+    std_dev = statistics.stdev(solve_times) if len(solve_times) > 1 else 0.0
+    min_time = min(solve_times) if solve_times else 0.0
+    max_time = max(solve_times) if solve_times else 0.0
+
+    # Calculate percentiles
+    if len(solve_times) < 20:
+        p95 = max_time
+    else:
+        sorted_times = sorted(solve_times)
+        p95 = sorted_times[int(len(sorted_times) * 0.95)]
+
+    if len(solve_times) < 100:
+        p99 = max_time
+    else:
+        sorted_times = sorted(solve_times)
+        p99 = sorted_times[int(len(sorted_times) * 0.99)]
+
+    total_time = sum(solve_times)
+
+    # Format output
     summary = []
-    summary.append(f"\nTesting {len(results.robot_config)}-link robot {results.robot_config}")
+    summary.append(f"\nTesting {len(robot_config)}-link robot {robot_config}")
     summary.append("=" * 80)
-    summary.append(f"Solver Initialization: {results.solver_init_time:.3f}s")
+    summary.append(f"Solver Initialization: {solver_init_time:.3f}s")
 
-    if results.warmup_times:
-        warmup_mean = statistics.mean(results.warmup_times)
-        summary.append(f"Warmup: {len(results.warmup_times)} iterations, mean: {warmup_mean:.4f}s")
+    if warmup_times:
+        warmup_mean = statistics.mean(warmup_times)
+        summary.append(
+            f"Warmup: {len(warmup_times)} iterations, mean: {warmup_mean:.4f}s"
+        )
 
-    grid_size = int(math.sqrt(len(results.grid_points)))
-    summary.append(f"Grid: {grid_size}x{grid_size} = {len(results.grid_points)} points")
+    grid_size = int(math.sqrt(len(grid_points)))
+    summary.append(f"Grid: {grid_size}x{grid_size} = {len(grid_points)} points")
     summary.append("")
     summary.append("Solve Time Statistics:")
-    summary.append(f"  Mean:     {results.mean_solve_time:.4f}s")
-    summary.append(f"  Median:   {results.median_solve_time:.4f}s")
-    summary.append(f"  Std Dev:  {results.std_dev:.4f}s")
-    summary.append(f"  Min:      {results.min_time:.4f}s")
-    summary.append(f"  Max:      {results.max_time:.4f}s")
-    summary.append(f"  P95:      {results.p95:.4f}s")
-    summary.append(f"  P99:      {results.p99:.4f}s")
+    summary.append(f"  Mean:     {mean_solve:.4f}s")
+    summary.append(f"  Median:   {median_solve:.4f}s")
+    summary.append(f"  Std Dev:  {std_dev:.4f}s")
+    summary.append(f"  Min:      {min_time:.4f}s")
+    summary.append(f"  Max:      {max_time:.4f}s")
+    summary.append(f"  P95:      {p95:.4f}s")
+    summary.append(f"  P99:      {p99:.4f}s")
     summary.append("")
-    summary.append(f"Total grid time: {results.total_time:.2f}s")
-    summary.append(f"Amortized time per solve: {results.mean_solve_time:.4f}s")
+    summary.append(f"Total grid time: {total_time:.2f}s")
+    summary.append(f"Amortized time per solve: {mean_solve:.4f}s")
 
     return "\n".join(summary)
 
@@ -177,7 +127,7 @@ def time_ik_grid_solve(
     grid_size: int = 15,
     warmup_iterations: int = 5,
     coverage_ratio: float = 0.8,
-) -> TimingResults:
+) -> Dict[str, Any]:
     """Construct a robot model, solve IK for a dense grid of points, and measure timing.
 
     This is the core helper function that:
@@ -196,7 +146,12 @@ def time_ik_grid_solve(
         coverage_ratio: Fraction of max reach to test (0.8 = 80%)
 
     Returns:
-        TimingResults containing all timing data and statistics
+        Dictionary containing timing data:
+        - solver_init_time: Time to initialize solver (seconds)
+        - warmup_times: List of warmup solve times (seconds)
+        - solve_times: List of grid solve times (seconds)
+        - grid_points: List of (x, y) target points
+        - robot_config: Tuple of link lengths
     """
     # Step 1: Create robot model
     model = RobotModel(link_lengths=link_lengths)
@@ -208,16 +163,18 @@ def time_ik_grid_solve(
     solver_init_time = end_init - start_init
 
     # Step 3: Calculate workspace bounds
-    bounds = calculate_workspace_bounds(model, coverage_ratio)
+    bounds = sum(model.link_lengths) * coverage_ratio
 
     # Step 4: Generate grid of target points
-    grid_points = generate_grid(grid_size, bounds)
+    grid_points = generate_grid(grid_size, (-bounds, bounds, -bounds, bounds))
 
     # Step 5: Perform warmup
     warmup_times = []
     if warmup_iterations > 0:
         # Use random subset of grid points for warmup
-        warmup_points = random.sample(grid_points, min(warmup_iterations, len(grid_points)))
+        warmup_points = random.sample(
+            grid_points, min(warmup_iterations, len(grid_points))
+        )
 
         for target in warmup_points:
             # Create zero initial position
@@ -247,13 +204,13 @@ def time_ik_grid_solve(
         solve_times.append(end - start)
 
     # Step 7: Return results
-    return TimingResults(
-        solver_init_time=solver_init_time,
-        warmup_times=warmup_times,
-        solve_times=solve_times,
-        grid_points=grid_points,
-        robot_config=link_lengths,
-    )
+    return {
+        "solver_init_time": solver_init_time,
+        "warmup_times": warmup_times,
+        "solve_times": solve_times,
+        "grid_points": grid_points,
+        "robot_config": link_lengths,
+    }
 
 
 def test_three_link_timing():
@@ -264,12 +221,15 @@ def test_three_link_timing():
         warmup_iterations=5,
     )
 
-    print(format_timing_summary(results))
+    print(format_timing_summary(**results))
 
     # Assertions for reasonable performance
-    assert results.mean_solve_time < 0.1, f"Mean solve time {results.mean_solve_time:.3f}s exceeds 100ms"
-    assert results.solver_init_time < 10.0, f"Solver init time {results.solver_init_time:.3f}s exceeds 10s"
-    assert len(results.solve_times) == 225, "Expected 225 grid points"
+    mean_solve = statistics.mean(results["solve_times"])
+    assert mean_solve < 0.1, f"Mean solve time {mean_solve:.3f}s exceeds 100ms"
+    assert (
+        results["solver_init_time"] < 10.0
+    ), f"Solver init time {results['solver_init_time']:.3f}s exceeds 10s"
+    assert len(results["solve_times"]) == 225, "Expected 225 grid points"
 
 
 def test_single_solve_timing():
@@ -304,60 +264,6 @@ def test_single_solve_timing():
         print(f"{name:<20} {solve_time_ms:>8.2f}ms")
 
 
-def test_solver_initialization_scaling():
-    """Test how solver initialization time scales with robot complexity."""
-    print("\n" + "=" * 80)
-    print("Solver Initialization Scaling")
-    print("=" * 80)
-
-    configs = [
-        (1.0, 1.0),
-        (1.0, 0.8, 0.6),
-        (1.0, 0.8, 0.6, 0.4),
-        (1.0, 0.8, 0.6, 0.4, 0.3),
-    ]
-
-    print(f"\n{'Config':<20} {'Init Time (s)':<15}")
-    print("-" * 35)
-
-    for link_lengths in configs:
-        model = RobotModel(link_lengths=link_lengths)
-
-        start = time.perf_counter()
-        IKSymbolic(model)
-        end = time.perf_counter()
-
-        init_time = end - start
-        print(f"{len(link_lengths)}-link{'':<13} {init_time:>10.3f}s")
-
-
-def test_warmup_effect():
-    """Analyze the effect of warmup on solve times."""
-    results = time_ik_grid_solve(
-        link_lengths=(1.0, 0.8, 0.6),
-        grid_size=10,
-        warmup_iterations=5,
-    )
-
-    print("\n" + "=" * 80)
-    print("Warmup Effect Analysis")
-    print("=" * 80)
-
-    if results.warmup_times:
-        warmup_mean = statistics.mean(results.warmup_times)
-        solve_mean = results.mean_solve_time
-
-        print(f"\nWarmup mean:       {warmup_mean:.4f}s")
-        print(f"Grid solve mean:   {solve_mean:.4f}s")
-        print(f"Difference:        {(warmup_mean - solve_mean):.4f}s")
-
-        if warmup_mean > solve_mean:
-            improvement_pct = ((warmup_mean - solve_mean) / warmup_mean) * 100
-            print(f"Improvement:       {improvement_pct:.1f}% faster after warmup")
-        else:
-            print("No significant warmup effect detected")
-
-
 def test_unreachable_targets_timing():
     """Measure timing for unreachable targets (worst-case)."""
     print("\n" + "=" * 80)
@@ -372,7 +278,12 @@ def test_unreachable_targets_timing():
     unreachable_bound = max_reach * 1.2
     unreachable_points = generate_grid(
         n_points=10,
-        bounds=(-unreachable_bound, unreachable_bound, -unreachable_bound, unreachable_bound)
+        bounds=(
+            -unreachable_bound,
+            unreachable_bound,
+            -unreachable_bound,
+            unreachable_bound,
+        ),
     )
 
     ik_solver = IKSymbolic(model)
@@ -397,31 +308,11 @@ def test_unreachable_targets_timing():
     )
 
     unreachable_mean = statistics.mean(unreachable_times)
-    reachable_mean = reachable_results.mean_solve_time
+    reachable_mean = statistics.mean(reachable_results["solve_times"])
 
     print(f"\nReachable targets mean:     {reachable_mean:.4f}s")
     print(f"Unreachable targets mean:   {unreachable_mean:.4f}s")
     print(f"Ratio (unreachable/reach):  {unreachable_mean/reachable_mean:.2f}x")
-
-
-def test_grid_density_comparison():
-    """Compare performance with different grid densities."""
-    print("\n" + "=" * 80)
-    print("Grid Density Comparison")
-    print("=" * 80)
-
-    print(f"\n{'Grid Size':<12} {'Points':<8} {'Mean Time':<12} {'Total Time':<12}")
-    print("-" * 44)
-
-    for grid_size in [5, 10, 15, 20]:
-        results = time_ik_grid_solve(
-            link_lengths=(1.0, 0.8, 0.6),
-            grid_size=grid_size,
-            warmup_iterations=3,
-        )
-
-        print(f"{grid_size}x{grid_size:<8} {len(results.solve_times):<8} "
-              f"{results.mean_solve_time:.4f}s{'':<3} {results.total_time:.2f}s")
 
 
 def test_robot_complexity_scaling():
@@ -446,10 +337,22 @@ def test_robot_complexity_scaling():
             warmup_iterations=3,
         )
 
-        print(f"{len(link_lengths)}-link{'':<6} "
-              f"{results.mean_solve_time:.4f}s{'':<3} "
-              f"{results.median_solve_time:.4f}s{'':<5} "
-              f"{results.p95:.4f}s")
+        solve_times = results["solve_times"]
+        mean_solve = statistics.mean(solve_times)
+        median_solve = statistics.median(solve_times)
+        sorted_times = sorted(solve_times)
+        p95 = (
+            sorted_times[int(len(sorted_times) * 0.95)]
+            if len(sorted_times) >= 20
+            else max(solve_times)
+        )
+
+        print(
+            f"{len(link_lengths)}-link{'':<6} "
+            f"{mean_solve:.4f}s{'':<3} "
+            f"{median_solve:.4f}s{'':<5} "
+            f"{p95:.4f}s"
+        )
 
 
 if __name__ == "__main__":
