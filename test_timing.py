@@ -11,10 +11,6 @@ The main helper function time_ik_grid_solve() constructs a robot model,
 solves IK for a dense grid of points, and measures timing with warmup.
 """
 
-try:
-    import pytest
-except ImportError:
-    pytest = None
 
 import time
 import statistics
@@ -23,6 +19,7 @@ import random
 from dataclasses import dataclass
 from typing import List, Tuple, Literal
 
+import matplotlib.figure
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -55,7 +52,7 @@ class TimingResults:
 
 def plot_solve_heatmap(
     results: TimingResults, kind: Literal["error", "time"]
-) -> plt.Figure:
+) -> matplotlib.figure.Figure:
     """Render a heatmap showing either the error or the time taken to solve for each grid position.
 
     Args:
@@ -69,10 +66,6 @@ def plot_solve_heatmap(
     x_coords, y_coords = results.grid_points
     grid_size = results.grid_size
 
-    # Reshape coordinates and data to 2D grid
-    X = x_coords.reshape(grid_size, grid_size)
-    Y = y_coords.reshape(grid_size, grid_size)
-
     # Select data to plot based on kind
     if kind == "error":
         data = results.solve_errors.reshape(grid_size, grid_size)
@@ -82,18 +75,19 @@ def plot_solve_heatmap(
     elif kind == "time":
         data = np.log(np.array(results.solve_times).reshape(grid_size, grid_size))
         title = f"IK Solver Time - {len(results.robot_config)}-link robot"
-        cbar_label = "Solve Time (ms)"
+        cbar_label = "Solve Time (log s)"
         cmap = "plasma"
     else:
         raise ValueError(f"Invalid kind: {kind}. Must be 'error' or 'time'")
 
     # Create figure and axis
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(8, 8))
 
     # Create heatmap using pcolormesh for better performance
     im = ax.imshow(
         data,
         cmap=cmap,
+        aspect="equal",
         extent=(np.min(x_coords), np.max(x_coords), np.min(y_coords), np.max(y_coords)),
     )
 
@@ -127,14 +121,12 @@ def format_timing_summary(results: TimingResults) -> str:
     solve_times = results.solve_times
     grid_size = results.grid_size
     robot_config = results.robot_config
-    # Calculate statistics
-    mean_solve = statistics.mean(solve_times) if solve_times else 0.0
-    median_solve = statistics.median(solve_times) if solve_times else 0.0
-    std_dev = statistics.stdev(solve_times) if len(solve_times) > 1 else 0.0
-    min_time = min(solve_times) if solve_times else 0.0
-    max_time = max(solve_times) if solve_times else 0.0
 
     # Calculate percentiles
+    assert len(solve_times) >= 2
+
+    sorted_times = sorted(solve_times)
+    p95 = p99 = max_time = sorted_times[-1]
     if len(solve_times) < 20:
         p95 = max_time
     else:
@@ -150,32 +142,27 @@ def format_timing_summary(results: TimingResults) -> str:
     total_time = sum(solve_times)
 
     # Format output (convert to milliseconds)
-    summary = []
-    summary.append(f"\nTesting {len(robot_config)}-link robot {robot_config}")
-    summary.append("=" * 80)
-    summary.append(f"Solver Initialization: {solver_init_time * 1000:.2f}ms")
+    summary = f"""
+Testing {len(robot_config)}-link robot {robot_config}
+Solver Initialization: {solver_init_time * 1000:.2f}ms"""
 
     if warmup_times:
-        warmup_mean = statistics.mean(warmup_times)
-        summary.append(
-            f"Warmup: {len(warmup_times)} iterations, mean: {warmup_mean * 1000:.2f}ms"
-        )
+        summary += f"\nWarmup: {len(warmup_times)} iterations, mean: {statistics.mean(warmup_times) * 1000:.2f}ms"
 
-    summary.append(f"Grid: {grid_size}x{grid_size} = {grid_size**2} points")
-    summary.append("")
-    summary.append("Solve Time Statistics:")
-    summary.append(f"  Mean:     {mean_solve * 1000:.2f}ms")
-    summary.append(f"  Median:   {median_solve * 1000:.2f}ms")
-    summary.append(f"  Std Dev:  {std_dev * 1000:.2f}ms")
-    summary.append(f"  Min:      {min_time * 1000:.2f}ms")
-    summary.append(f"  Max:      {max_time * 1000:.2f}ms")
-    summary.append(f"  P95:      {p95 * 1000:.2f}ms")
-    summary.append(f"  P99:      {p99 * 1000:.2f}ms")
-    summary.append("")
-    summary.append(f"Total grid time: {total_time:.2f}s")
-    summary.append(f"Amortized time per solve: {mean_solve * 1000:.2f}ms")
+    summary += f"""
+Grid: {grid_size}x{grid_size} = {grid_size**2} points
+Solve Time Statistics:
+    Mean:     {statistics.mean(solve_times) * 1000:.2f}ms
+    Median:   {statistics.median(solve_times) * 1000:.2f}ms
+    Std Dev:  {statistics.stdev(solve_times) * 1000:.2f}ms
+    Min:      {sorted_times[0] * 1000:.2f}ms
+    Max:      {sorted_times[-1] * 1000:.2f}ms
+    P95:      {p95 * 1000:.2f}ms
+    P99:      {p99 * 1000:.2f}ms
 
-    return "\n".join(summary)
+Total grid time: {total_time:.2f}s
+"""
+    return summary
 
 
 def time_ik_grid_solve(
@@ -218,8 +205,8 @@ def time_ik_grid_solve(
 
     # Step 4: Generate grid of target points
     x_coords, y_coords = np.meshgrid(
-        np.linspace(-bounds, -bounds, grid_size),
-        np.linspace(-bounds, -bounds, grid_size),
+        np.linspace(-bounds, bounds, grid_size),
+        np.linspace(-bounds, bounds, grid_size),
     )
     x_coords = x_coords.ravel()
     y_coords = y_coords.ravel()
@@ -281,11 +268,11 @@ def time_ik_grid_solve(
     )
 
 
-def test_three_link_timing():
+def test_three_link_timing(link_lengths=(1.0, 0.8, 0.6), grid_size=15):
     """Test timing for a three-link robot configuration (required test)."""
     results = time_ik_grid_solve(
-        link_lengths=(1.0, 0.8, 0.6),
-        grid_size=15,
+        link_lengths=link_lengths,
+        grid_size=grid_size,
         warmup_iterations=5,
     )
 
@@ -293,97 +280,13 @@ def test_three_link_timing():
 
     # Assertions for reasonable performance
     mean_solve = statistics.mean(results.solve_times)
-    assert mean_solve < 0.1, f"Mean solve time {mean_solve:.3f}s exceeds 100ms"
+    assert mean_solve < 0.001, f"Mean solve time {mean_solve:.3f}s exceeds 100ms"
     assert (
         results.solver_init_time < 10.0
     ), f"Solver init time {results.solver_init_time:.3f}s exceeds 10s"
-    assert len(results.solve_times) == 15**2, "Expected 225 grid points"
+    assert len(results.solve_times) == grid_size**2, "Expected 225 grid points"
 
     return results
-
-
-def test_single_solve_timing():
-    """Measure timing for a single IK solve with different target scenarios."""
-    print("\n" + "=" * 80)
-    print("Single Solve Timing Comparison")
-    print("=" * 80)
-
-    # Create a 3-link robot
-    model = RobotModel(link_lengths=(1.0, 0.8, 0.6))
-    ik_solver = IKSymbolic(model)
-    zero_position = RobotPosition(joint_angles=(0.0, 0.0, 0.0))
-
-    # Test scenarios
-    scenarios = [
-        ("Center (easy)", (1.0, 0.0)),
-        ("Near max reach", (2.2, 0.5)),
-        ("Reachable target", (1.5, 1.0)),
-    ]
-
-    print(f"\n{'Scenario':<20} {'Time (ms)':<12}")
-    print("-" * 32)
-
-    for name, target in scenarios:
-        state = RobotState(model, zero_position, target)
-
-        start = time.perf_counter()
-        ik_solver(state)
-        end = time.perf_counter()
-
-        solve_time_ms = (end - start) * 1000
-        print(f"{name:<20} {solve_time_ms:>8.2f}ms")
-
-
-def test_unreachable_targets_timing():
-    """Measure timing for unreachable targets (worst-case)."""
-    print("\n" + "=" * 80)
-    print("Unreachable Targets Timing (Worst-case)")
-    print("=" * 80)
-
-    # Create a 3-link robot
-    model = RobotModel(link_lengths=(1.0, 0.8, 0.6))
-    max_reach = sum(model.link_lengths)
-
-    # Generate points outside max reach (1.2x max reach)
-    unreachable_bound = max_reach * 1.2
-    x_coords, y_coords = generate_grid(
-        n_points=10,
-        bounds=(
-            -unreachable_bound,
-            unreachable_bound,
-            -unreachable_bound,
-            unreachable_bound,
-        ),
-    )
-
-    ik_solver = IKSymbolic(model)
-    zero_position = RobotPosition(joint_angles=(0.0, 0.0, 0.0))
-
-    unreachable_times = []
-    for idx in range(len(x_coords)):
-        target = (float(x_coords[idx]), float(y_coords[idx]))
-        state = RobotState(model, zero_position, target)
-
-        start = time.perf_counter()
-        ik_solver(state)
-        end = time.perf_counter()
-
-        unreachable_times.append(end - start)
-
-    # Also test reachable targets for comparison
-    reachable_results = time_ik_grid_solve(
-        link_lengths=(1.0, 0.8, 0.6),
-        grid_size=10,
-        warmup_iterations=0,
-        coverage_ratio=0.8,
-    )
-
-    unreachable_mean = statistics.mean(unreachable_times)
-    reachable_mean = statistics.mean(reachable_results.solve_times)
-
-    print(f"\nReachable targets mean:     {reachable_mean * 1000:.2f}ms")
-    print(f"Unreachable targets mean:   {unreachable_mean * 1000:.2f}ms")
-    print(f"Ratio (unreachable/reach):  {unreachable_mean/reachable_mean:.2f}x")
 
 
 def test_robot_complexity_scaling():
@@ -428,7 +331,7 @@ def test_robot_complexity_scaling():
 
 if __name__ == "__main__":
     print("Running timing tests...")
-    results = test_three_link_timing()
+    results = test_three_link_timing(grid_size=50)
 
     fig = plot_solve_heatmap(results, "time")
     fig.show()
