@@ -68,7 +68,7 @@ def plot_solve_heatmap(
 
     # Select data to plot based on kind
     if kind == "error":
-        data = results.solve_errors.reshape(grid_size, grid_size)
+        data = np.array(results.solve_errors).reshape(grid_size, grid_size)
         title = f"IK Solver Position Error - {len(results.robot_config)}-link robot"
         cbar_label = "Position Error (units)"
         cmap = "viridis"
