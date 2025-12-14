@@ -21,9 +21,10 @@ import statistics
 import math
 import random
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Tuple, Literal
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 from datamodel import RobotModel, RobotPosition, RobotState
 from symbolic import IKSymbolic
@@ -40,6 +41,7 @@ class TimingResults:
         grid_size: Number of points per dimension
         robot_config: Link lengths of robot
         grid_points: Tuple of (x_coords, y_coords) arrays for the grid
+        solve_errors: Array of position errors for each grid point (distance from target)
     """
 
     solver_init_time: float
@@ -48,6 +50,67 @@ class TimingResults:
     grid_size: int
     robot_config: Tuple[float, ...]
     grid_points: Tuple[np.ndarray, np.ndarray]
+    solve_errors: np.ndarray
+
+
+def plot_solve_heatmap(
+    results: TimingResults, kind: Literal["error", "time"]
+) -> plt.Figure:
+    """Render a heatmap showing either the error or the time taken to solve for each grid position.
+
+    Args:
+        results: TimingResults dataclass containing timing and error data
+        kind: Type of heatmap to generate - "error" for position errors, "time" for solve times
+
+    Returns:
+        matplotlib Figure object containing the heatmap
+    """
+    # Extract grid coordinates and reshape data to grid form
+    x_coords, y_coords = results.grid_points
+    grid_size = results.grid_size
+
+    # Reshape coordinates and data to 2D grid
+    X = x_coords.reshape(grid_size, grid_size)
+    Y = y_coords.reshape(grid_size, grid_size)
+
+    # Select data to plot based on kind
+    if kind == "error":
+        data = results.solve_errors.reshape(grid_size, grid_size)
+        title = f"IK Solver Position Error - {len(results.robot_config)}-link robot"
+        cbar_label = "Position Error (units)"
+        cmap = "viridis"
+    elif kind == "time":
+        data = np.log(np.array(results.solve_times).reshape(grid_size, grid_size))
+        title = f"IK Solver Time - {len(results.robot_config)}-link robot"
+        cbar_label = "Solve Time (ms)"
+        cmap = "plasma"
+    else:
+        raise ValueError(f"Invalid kind: {kind}. Must be 'error' or 'time'")
+
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    # Create heatmap using pcolormesh for better performance
+    im = ax.imshow(
+        data,
+        cmap=cmap,
+        extent=(np.min(x_coords), np.max(x_coords), np.min(y_coords), np.max(y_coords)),
+    )
+
+    # Add colorbar
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label(cbar_label, rotation=270, labelpad=20)
+
+    # Set labels and title
+    ax.set_xlabel("Target X Position")
+    ax.set_ylabel("Target Y Position")
+    ax.set_title(title)
+    ax.set_aspect("equal")
+
+    # Add grid
+    ax.grid(True, alpha=0.3)
+
+    return fig
 
 
 def format_timing_summary(results: TimingResults) -> str:
@@ -185,6 +248,7 @@ def time_ik_grid_solve(
 
     # Step 6: Measure grid solves
     solve_times = []
+    solve_errors = []
     zero_position = RobotPosition(joint_angles=tuple(0.0 for _ in link_lengths))
 
     for target in zip(x_coords, y_coords):
@@ -192,10 +256,18 @@ def time_ik_grid_solve(
 
         # Time the solve operation
         start = time.perf_counter()
-        ik_solver(state)
+        solution = ik_solver(state)
         end = time.perf_counter()
 
         solve_times.append(end - start)
+
+        # Calculate position error
+        end_effector_positions = model.forward_kinematics(solution)
+        end_effector = end_effector_positions[-1]
+        error = math.sqrt(
+            (end_effector[0] - target[0]) ** 2 + (end_effector[1] - target[1]) ** 2
+        )
+        solve_errors.append(error)
 
     # Step 7: Return results
     return TimingResults(
@@ -205,6 +277,7 @@ def time_ik_grid_solve(
         grid_size=grid_size,
         robot_config=link_lengths,
         grid_points=(x_coords, y_coords),
+        solve_errors=np.array(solve_errors),
     )
 
 
@@ -225,6 +298,8 @@ def test_three_link_timing():
         results.solver_init_time < 10.0
     ), f"Solver init time {results.solver_init_time:.3f}s exceeds 10s"
     assert len(results.solve_times) == 15**2, "Expected 225 grid points"
+
+    return results
 
 
 def test_single_solve_timing():
@@ -353,4 +428,8 @@ def test_robot_complexity_scaling():
 
 if __name__ == "__main__":
     print("Running timing tests...")
-    test_three_link_timing()
+    results = test_three_link_timing()
+
+    fig = plot_solve_heatmap(results, "time")
+    fig.show()
+    plt.show()
