@@ -7,6 +7,7 @@ _Expr = TypeVar("_Expr", bound="Expr")
 
 class Expr:
     """Base class for all sympy expressions."""
+
     def __add__(self, other: Any) -> Expr: ...
     def __radd__(self, other: Any) -> Expr: ...
     def __sub__(self, other: Any) -> Expr: ...
@@ -21,15 +22,18 @@ class Expr:
 
 class Symbol(Expr):
     """A symbolic variable."""
+
     name: str
     def __init__(self, name: str, **assumptions: Any) -> None: ...
 
 class Float(Expr):
     """A symbolic floating point number."""
+
     def __init__(self, value: Union[float, int, str] = 0) -> None: ...
 
 class Integer(Expr):
     """A symbolic integer."""
+
     def __init__(self, value: int) -> None: ...
 
 def symbols(
@@ -41,7 +45,6 @@ def symbols(
     integer: bool = False,
     **assumptions: Any
 ) -> Union[Symbol, tuple[Symbol, ...]]: ...
-
 def cos(x: Union[Expr, float, int]) -> Expr:
     """Cosine function."""
     ...
@@ -58,6 +61,10 @@ def diff(expr: Expr, symbol: Symbol) -> Expr:
     """Compute the derivative of an expression with respect to a symbol."""
     ...
 
+def atan2(y: Union[Expr, float, int], x: Union[Expr, float, int]):
+    """Compute the arctangent with y and x provided separately."""
+    ...
+
 def lambdify(
     args: Union[Symbol, Sequence[Symbol]],
     expr: Union[Expr, Sequence[Expr]],
@@ -69,6 +76,7 @@ def lambdify(
 
 class Eq:
     """Equality expression."""
+
     def __init__(self, lhs: Expr, rhs: Union[Expr, float, int]) -> None: ...
 
 def nsolve(

@@ -64,6 +64,7 @@ class RobotPosition:
     """Defines the current joint rotation values of the 2d robot, relative to the joint origin defined in RobotModel."""
 
     joint_angles: tuple[float, ...]  # Current rotation angle for each joint (radians)
+    end_effector_angle: Optional[float] = field(default=None)
 
 
 @dataclass(frozen=True)

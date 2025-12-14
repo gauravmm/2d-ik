@@ -60,3 +60,7 @@ python test_symbolic_ik.py
 All this is implemented with extensive use of Anthropic's Claude 4.5. A key purpose of this is to evaluate the use of AI on a simple (Undergrad-level) IK problem requring generalization from its training corpus.
 
 I wrote this with Claude Sonnet 4.5, which is incredible! It required a little strategic prompting, but generally acted like a mid-level developer with a caffeine addiction. It came up with the data model and forward kinematics easily, and was able to debug issues with the visualization code much quicker than me. (The issue it both caused and debugged was that matplotlib's animation functions require the artists to be drawn on first initialization.)
+
+## Instructions for AI Agent
+
+Activate the pyenv environment `ik2d` before running any code.
