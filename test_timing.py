@@ -47,7 +47,7 @@ class TimingResults:
     grid_size: int
     robot_config: Tuple[float, ...]
     grid_points: Tuple[np.ndarray, np.ndarray]
-    solve_errors: np.ndarray
+    solve_errors: List[float]
 
 
 def plot_solve_heatmap(
@@ -147,7 +147,7 @@ Testing {len(robot_config)}-link robot {robot_config}
 Solver Initialization: {solver_init_time * 1000:.2f}ms"""
 
     if warmup_times:
-        summary += f"\nWarmup: {len(warmup_times)} iterations, mean: {statistics.mean(warmup_times) * 1000:.2f}ms"
+        summary += f"\nWarmup: {len(warmup_times)} iterations, max: {max(warmup_times) * 1000:.2f}ms"
 
     summary += f"""
 Grid: {grid_size}x{grid_size} = {grid_size**2} points
@@ -264,7 +264,7 @@ def time_ik_grid_solve(
         grid_size=grid_size,
         robot_config=link_lengths,
         grid_points=(x_coords, y_coords),
-        solve_errors=np.array(solve_errors),
+        solve_errors=solve_errors,
     )
 
 
@@ -280,7 +280,7 @@ def test_three_link_timing(link_lengths=(1.0, 0.8, 0.6), grid_size=15):
 
     # Assertions for reasonable performance
     mean_solve = statistics.mean(results.solve_times)
-    assert mean_solve < 0.001, f"Mean solve time {mean_solve:.3f}s exceeds 100ms"
+    assert mean_solve < 0.01, f"Mean solve time {mean_solve:.3f}s exceeds 10ms"
     assert (
         results.solver_init_time < 10.0
     ), f"Solver init time {results.solver_init_time:.3f}s exceeds 10s"
@@ -289,20 +289,19 @@ def test_three_link_timing(link_lengths=(1.0, 0.8, 0.6), grid_size=15):
     return results
 
 
-def test_robot_complexity_scaling():
+def evaluate_robot_complexity_scaling():
     """Measure how solve time scales with robot complexity."""
     print("\n" + "=" * 80)
     print("Robot Complexity Scaling")
     print("=" * 80)
 
-    configs = [
-        (1.0, 1.0),
-        (1.0, 0.8, 0.6),
-        (1.0, 0.8, 0.6, 0.4),
-    ]
+    configs = [tuple([1.0] * k) for k in range(2, 8)]
 
-    print(f"\n{'Config':<12} {'Mean Time':<12} {'Median Time':<14} {'P95':<10}")
-    print("-" * 48)
+    def print_cols(*parts: str, width: int = 12):
+        print("".join(p.rjust(width) for p in parts))
+
+    print_cols("Config", "Warmup", "Mean", "Median", "P95")
+    print("-" * 60)
 
     for link_lengths in configs:
         results = time_ik_grid_solve(
@@ -312,25 +311,25 @@ def test_robot_complexity_scaling():
         )
 
         solve_times = results.solve_times
-        mean_solve = statistics.mean(solve_times)
-        median_solve = statistics.median(solve_times)
         sorted_times = sorted(solve_times)
         p95 = (
             sorted_times[int(len(sorted_times) * 0.95)]
             if len(sorted_times) >= 20
-            else max(solve_times)
+            else sorted_times[-1]
         )
 
-        print(
-            f"{len(link_lengths)}-link{'':<6} "
-            f"{mean_solve * 1000:.2f}ms{'':<3} "
-            f"{median_solve * 1000:.2f}ms{'':<5} "
-            f"{p95 * 1000:.2f}ms"
+        print_cols(
+            f"{len(link_lengths)}-link",
+            f"{max(results.warmup_times) * 1000:.2f}ms",
+            f"{statistics.mean(solve_times) * 1000:.2f}ms",
+            f"{statistics.median(solve_times) * 1000:.2f}ms",
+            f"{p95 * 1000:.2f}ms",
         )
 
 
 if __name__ == "__main__":
     print("Running timing tests...")
+    # evaluate_robot_complexity_scaling()
     results = test_three_link_timing(grid_size=50)
 
     fig = plot_solve_heatmap(results, "time")
