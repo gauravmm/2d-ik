@@ -1,15 +1,16 @@
-#!/usr/bin/env python3
-
 from matplotlib import artist
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from matplotlib.lines import Line2D
+from matplotlib.backend_bases import MouseEvent, MouseButton, Event
 import matplotlib.animation as animation
 from datamodel import RobotModel, RobotPosition, RobotState
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, List, Literal, Optional, Sequence
 import logging
 
 logger = logging.getLogger(__name__)
+
+ClickCallbackType = Callable[[float, float, Literal["left", "right"]], None]
 
 
 class RobotVisualizer:
@@ -19,7 +20,7 @@ class RobotVisualizer:
         self,
         robot_state: RobotState,
         figsize: tuple[float, float] = (10, 10),
-        click_callback: Optional[Callable[[float, float], None]] = None,
+        click_callback: Optional[ClickCallbackType] = None,
         joint_radius: float = 0.05,
         link_width: float = 2.0,
         auto_scale: bool = True,
@@ -106,15 +107,20 @@ class RobotVisualizer:
             self.ax.set_xlim(-margin, margin)
             self.ax.set_ylim(-margin, margin)
 
-    def _on_click(self, event):
+    def _on_click(self, event: Event):
         """Handle mouse click events."""
+        assert isinstance(event, MouseEvent)
         if (
             event.inaxes == self.ax
             and event.xdata is not None
             and event.ydata is not None
         ):
             if self.click_callback:
-                self.click_callback(event.xdata, event.ydata)
+                self.click_callback(
+                    event.xdata,
+                    event.ydata,
+                    "left" if event.button == MouseButton.LEFT else "right",
+                )
             else:
                 logger.warning(f"No callback registered!")
 
@@ -185,7 +191,7 @@ class RobotVisualizer:
         plt.show()
         return anim
 
-    def set_click_callback(self, callback: Callable[[float, float], None]):
+    def set_click_callback(self, callback: ClickCallbackType):
         """Set or update the click event callback.
 
         Args:
@@ -211,8 +217,8 @@ if __name__ == "__main__":
     state = RobotState(model, position, (0, 0))
 
     # Click handler
-    def on_click(x, y):
-        print(f"Clicked at: ({x:.2f}, {y:.2f})")
+    def on_click(x, y, btn):
+        print(f"Clicked at: ({x:.2f}, {y:.2f}) {btn}")
 
     # Create visualizer
     viz = RobotVisualizer(state, click_callback=on_click)

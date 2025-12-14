@@ -1,7 +1,7 @@
 #!python3
 
 import sympy as sp
-from typing import Any, Callable, Tuple
+from typing import Any, Callable, Literal, Tuple
 
 from datamodel import Position, RobotModel, RobotPosition, RobotState
 
@@ -168,9 +168,9 @@ if __name__ == "__main__":
     viz = RobotVisualizer(current_state)
 
     # Click callback that updates the target and solves IK
-    def on_click(x: float, y: float):
+    def on_click(x: float, y: float, btn: Literal["left", "right"]):
         global current_state
-        print(f"\nClicked at: ({x:.2f}, {y:.2f})")
+        print(f"\nClicked at: ({x:.2f}, {y:.2f}) {btn}")
 
         # Update the desired end effector position
         new_state = RobotState(model, current_state.current, (x, y))
