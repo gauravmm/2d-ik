@@ -1,0 +1,14 @@
+[project]
+name = "2d-ik"
+version = "0.1.0"
+description = "2D Inverse Kinematics for 3D printer bed unloader robot"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "matplotlib>=3.10.8",
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "scipy>=1.16.3",
+    "scipy-stubs>=1.16.3.3",
+    "sympy>=1.14.0",
+]
