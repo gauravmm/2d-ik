@@ -10,9 +10,7 @@ class RobotModel:
     """Defines the parameters for a robot on a 2d plane consisting of a chain of rigid links with revolute joints between them. Link displacements and joint origins must be configurable."""
 
     link_lengths: tuple[float, ...]  # Length of each link in the chain
-    joint_origins: tuple[float, ...] = field(
-        default=tuple()
-    )  # Initial angle offset for each joint (defaults to 0 for all joints)
+    joint_origins: tuple[float, ...] = field(default=tuple())  # Initial angle offset
 
     def __post_init__(self):
         # Validate that we have consistent dimensions

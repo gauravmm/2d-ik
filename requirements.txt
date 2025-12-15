@@ -1,6 +1,0 @@
-pytest
-matplotlib
-sympy
-mypy
-scipy
-scipy-stubs
