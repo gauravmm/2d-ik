@@ -66,6 +66,8 @@ class RobotPosition:
 
 @dataclass(frozen=True)
 class RobotState:
+    """Encodes the state of the robot at this point in time."""
+
     model: RobotModel
     current: RobotPosition
     desired_end_effector: Optional[Position] = None

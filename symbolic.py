@@ -1,7 +1,8 @@
 #!python3
 
+from typing import Any, Callable, Literal, Optional, Tuple
+
 import sympy as sp
-from typing import Any, Callable, Literal, Tuple
 
 from datamodel import Position, RobotModel, RobotPosition, RobotState
 
@@ -93,20 +94,25 @@ class IKSymbolic:
             "numpy",
         )
 
-    def __call__(self, state: RobotState) -> RobotPosition:
+    def __call__(
+        self,
+        state: RobotState,
+        desired_end_effector: Position,
+        desired_end_effector_angle: Optional[float] = None,
+    ) -> RobotState:
         # Sanity-check that state.model is the same as self.model
         if state.model != self.model:
             raise ValueError("State model does not match IKSymbolic model")
 
         # Get the desired end effector position
-        if state.desired_end_effector is None:
+        if desired_end_effector is None:
             raise ValueError("State must have a desired_end_effector position")
 
-        target_x, target_y = state.desired_end_effector
+        target_x, target_y = desired_end_effector
 
         # Extract angle constraint if present
-        if state.desired_end_effector_angle is not None:
-            target_angle = state.desired_end_effector_angle
+        if desired_end_effector_angle is not None:
+            target_angle = desired_end_effector_angle
             # Default angle weight - could be made configurable via RobotModel
             angle_weight = 1.0e3
         else:
@@ -142,12 +148,18 @@ class IKSymbolic:
         # Extract joint angles from solution
         joint_angles = tuple(float(angle) for angle in result.x)
 
-        return RobotPosition(joint_angles=joint_angles)
+        return RobotState(
+            state.model,
+            RobotPosition(joint_angles=joint_angles),
+            desired_end_effector,
+            desired_end_effector_angle,
+        )
 
 
 if __name__ == "__main__":
     # Interactive IK solver demo using RobotVisualizer
     import math
+
     from visualization import RobotVisualizer
 
     # Create a 3-link robot
