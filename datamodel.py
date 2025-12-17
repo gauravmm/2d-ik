@@ -65,11 +65,18 @@ class RobotPosition:
 
 
 @dataclass(frozen=True)
+class DesiredPosition:
+    ee_position: Optional[Position] = None
+    ee_angle: Optional[float] = None
+
+
+@dataclass(frozen=True)
 class RobotState:
+    """Encodes the state of the robot at this point in time."""
+
     model: RobotModel
     current: RobotPosition
-    desired_end_effector: Optional[Position] = None
-    desired_end_effector_angle: Optional[float] = None
+    desired: DesiredPosition
 
     def get_joint_positions(self) -> List[Position]:
         """Convenience method to calculate joint positions using forward kinematics.

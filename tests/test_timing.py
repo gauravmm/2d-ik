@@ -23,7 +23,7 @@ import matplotlib.figure
 import numpy as np
 import matplotlib.pyplot as plt
 
-from datamodel import RobotModel, RobotPosition, RobotState
+from datamodel import DesiredPosition, RobotModel, RobotPosition, RobotState
 from symbolic import IKSymbolic
 
 
@@ -225,11 +225,11 @@ def time_ik_grid_solve(
             target = (float(x_coords[idx]), float(y_coords[idx]))
             # Create zero initial position
             zero_position = RobotPosition(joint_angles=tuple(0.0 for _ in link_lengths))
-            state = RobotState(model, zero_position, target, locked_ee_angle)
+            state = RobotState(model, zero_position, DesiredPosition())
 
             # Time the solve
             start = time.perf_counter()
-            ik_solver(state)
+            ik_solver(state, DesiredPosition(ee_position=target, ee_angle=locked_ee_angle))
             end = time.perf_counter()
 
             warmup_times.append(end - start)
@@ -240,16 +240,17 @@ def time_ik_grid_solve(
     zero_position = RobotPosition(joint_angles=tuple(0.0 for _ in link_lengths))
 
     for target in zip(x_coords, y_coords):
-        state = RobotState(model, zero_position, target, locked_ee_angle)
+        state = RobotState(model, zero_position, DesiredPosition())
 
         # Time the solve operation
         start = time.perf_counter()
-        solution = ik_solver(state)
+        solution_state = ik_solver(state, DesiredPosition(ee_position=target, ee_angle=locked_ee_angle))
         end = time.perf_counter()
 
         solve_times.append(end - start)
 
         # Calculate position error
+        solution = solution_state.current
         end_effector_positions = model.forward_kinematics(solution)
         end_effector = end_effector_positions[-1]
         error = math.sqrt(

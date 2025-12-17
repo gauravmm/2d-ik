@@ -1,9 +1,10 @@
 #!python3
 
-import sympy as sp
-from typing import Any, Callable, Literal, Tuple
+from typing import Any, Callable, Literal, Optional, Tuple
 
-from datamodel import Position, RobotModel, RobotPosition, RobotState
+import sympy as sp
+
+from datamodel import DesiredPosition, Position, RobotModel, RobotPosition, RobotState
 
 
 class IKSymbolic:
@@ -93,20 +94,24 @@ class IKSymbolic:
             "numpy",
         )
 
-    def __call__(self, state: RobotState) -> RobotPosition:
+    def __call__(
+        self,
+        state: RobotState,
+        desired: DesiredPosition,
+    ) -> RobotState:
         # Sanity-check that state.model is the same as self.model
         if state.model != self.model:
             raise ValueError("State model does not match IKSymbolic model")
 
         # Get the desired end effector position
-        if state.desired_end_effector is None:
-            raise ValueError("State must have a desired_end_effector position")
+        if desired.ee_position is None:
+            raise ValueError("DesiredPosition must have an ee_position")
 
-        target_x, target_y = state.desired_end_effector
+        target_x, target_y = desired.ee_position
 
         # Extract angle constraint if present
-        if state.desired_end_effector_angle is not None:
-            target_angle = state.desired_end_effector_angle
+        if desired.ee_angle is not None:
+            target_angle = desired.ee_angle
             # Default angle weight - could be made configurable via RobotModel
             angle_weight = 1.0e3
         else:
@@ -142,12 +147,17 @@ class IKSymbolic:
         # Extract joint angles from solution
         joint_angles = tuple(float(angle) for angle in result.x)
 
-        return RobotPosition(joint_angles=joint_angles)
+        return RobotState(
+            state.model,
+            RobotPosition(joint_angles=joint_angles),
+            desired,
+        )
 
 
 if __name__ == "__main__":
     # Interactive IK solver demo using RobotVisualizer
     import math
+
     from visualization import RobotVisualizer
 
     # Create a 3-link robot
@@ -159,7 +169,7 @@ if __name__ == "__main__":
     # Initial position
     initial_position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
     global current_state
-    current_state = RobotState(model, initial_position, None)
+    current_state = RobotState(model, initial_position, DesiredPosition())
 
     # Create visualizer
     viz = RobotVisualizer(current_state)
@@ -169,18 +179,19 @@ if __name__ == "__main__":
         global current_state
         print(f"\nClicked at: ({x:.2f}, {y:.2f}) {btn}")
 
-        new_end_effector_angle = current_state.desired_end_effector_angle
+        new_end_effector_angle = current_state.desired.ee_angle
         if btn == "right":
             new_end_effector_angle = 0.0 if new_end_effector_angle is None else None
 
-        # Update the desired end effector position
-        new_state = RobotState(
-            model, current_state.current, (x, y), new_end_effector_angle
-        )
+        # Create input state with current position
+        input_state = RobotState(model, current_state.current, DesiredPosition())
 
         # Solve IK
         try:
-            solution = ik_solver(new_state)
+            solution_state = ik_solver(
+                input_state, DesiredPosition(ee_position=(x, y), ee_angle=new_end_effector_angle)
+            )
+            solution = solution_state.current
             print(f"Solution: {tuple(f'{a:.3f}' for a in solution.joint_angles)}")
 
             # Verify the solution
@@ -190,7 +201,7 @@ if __name__ == "__main__":
             print(f"Position error: {error:.6f}")
 
             # Update the visualization with the new solution
-            current_state = RobotState(model, solution, (x, y), new_end_effector_angle)
+            current_state = solution_state
             viz.update(current_state)
 
         except Exception as e:
