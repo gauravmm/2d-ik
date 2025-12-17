@@ -4,7 +4,7 @@ from typing import Any, Callable, Literal, Optional, Tuple
 
 import sympy as sp
 
-from datamodel import Position, RobotModel, RobotPosition, RobotState
+from datamodel import DesiredPosition, Position, RobotModel, RobotPosition, RobotState
 
 
 class IKSymbolic:
@@ -151,8 +151,7 @@ class IKSymbolic:
         return RobotState(
             state.model,
             RobotPosition(joint_angles=joint_angles),
-            desired_end_effector,
-            desired_end_effector_angle,
+            DesiredPosition(ee_position=desired_end_effector, ee_angle=desired_end_effector_angle),
         )
 
 
@@ -171,7 +170,7 @@ if __name__ == "__main__":
     # Initial position
     initial_position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
     global current_state
-    current_state = RobotState(model, initial_position, None)
+    current_state = RobotState(model, initial_position, DesiredPosition())
 
     # Create visualizer
     viz = RobotVisualizer(current_state)
@@ -181,12 +180,12 @@ if __name__ == "__main__":
         global current_state
         print(f"\nClicked at: ({x:.2f}, {y:.2f}) {btn}")
 
-        new_end_effector_angle = current_state.desired_end_effector_angle
+        new_end_effector_angle = current_state.desired.ee_angle
         if btn == "right":
             new_end_effector_angle = 0.0 if new_end_effector_angle is None else None
 
         # Create input state with current position
-        input_state = RobotState(model, current_state.current)
+        input_state = RobotState(model, current_state.current, DesiredPosition())
 
         # Solve IK
         try:

@@ -3,7 +3,7 @@
 
 import math
 import pytest
-from datamodel import RobotModel, RobotPosition, RobotState
+from datamodel import DesiredPosition, RobotModel, RobotPosition, RobotState
 from symbolic import IKSymbolic
 
 
@@ -30,7 +30,7 @@ class TestAngleConstraints:
 
         initial_position = RobotPosition(joint_angles=(0.0, 0.0, 0.0))
 
-        state = RobotState(model=model, current=initial_position)
+        state = RobotState(model=model, current=initial_position, desired=DesiredPosition())
 
         solution_state = ik_solver(state, target_pos, target_angle)
         solution = solution_state.current
@@ -65,7 +65,7 @@ class TestAngleConstraints:
 
         initial_position = RobotPosition(joint_angles=(0.5, 0.5, 0.5))
 
-        state = RobotState(model=model, current=initial_position)
+        state = RobotState(model=model, current=initial_position, desired=DesiredPosition())
 
         solution_state = ik_solver(state, target_pos, target_angle)
         solution = solution_state.current
@@ -95,7 +95,7 @@ class TestAngleConstraints:
 
         initial_position = RobotPosition(joint_angles=(0.5, 0.5, 0.5))
 
-        state = RobotState(model=model, current=initial_position)
+        state = RobotState(model=model, current=initial_position, desired=DesiredPosition())
 
         solution_state = ik_solver(state, target_pos, target_angle)
         solution = solution_state.current
@@ -126,7 +126,7 @@ class TestAngleConstraints:
 
         initial_position = RobotPosition(joint_angles=(0.0, 0.0, 0.0))
 
-        state = RobotState(model=model, current=initial_position)
+        state = RobotState(model=model, current=initial_position, desired=DesiredPosition())
 
         solution_state = ik_solver(state, target_pos, target_angle)
         solution = solution_state.current
@@ -147,7 +147,7 @@ class TestAngleConstraints:
 
         initial_position = RobotPosition(joint_angles=(0.0, 0.0, 0.0))
 
-        state = RobotState(model=model, current=initial_position)
+        state = RobotState(model=model, current=initial_position, desired=DesiredPosition())
 
         solution_state = ik_solver(state, target_pos)  # No angle constraint
         solution = solution_state.current
@@ -171,7 +171,7 @@ class TestAngleConstraints:
         initial_position = RobotPosition(joint_angles=(0.0, 0.0, 0.0))
 
         # Solve for 45 degrees
-        state = RobotState(model=model, current=initial_position)
+        state = RobotState(model=model, current=initial_position, desired=DesiredPosition())
         solution_state1 = ik_solver(state, target_pos, math.pi / 4)
         solution1 = solution_state1.current
         angle1 = ik_solver.angle_func(*solution1.joint_angles)
@@ -217,7 +217,7 @@ class TestAngleConstraints:
 
         initial_position = RobotPosition(joint_angles=(0.0, 0.0))
 
-        state = RobotState(model=model, current=initial_position)
+        state = RobotState(model=model, current=initial_position, desired=DesiredPosition())
 
         solution_state = ik_solver(state, target_pos, target_angle)
         solution = solution_state.current
@@ -248,7 +248,7 @@ class TestAngleConstraints:
 
         initial_position = RobotPosition(joint_angles=(0.0, 0.0, 0.0))
 
-        state = RobotState(model=model, current=initial_position)
+        state = RobotState(model=model, current=initial_position, desired=DesiredPosition())
 
         solution_state = ik_solver(state, target_pos, target_angle)
         solution = solution_state.current
@@ -277,7 +277,7 @@ class TestAngleConstraints:
 
         initial_position = RobotPosition(joint_angles=(0.0, 0.0, 0.0))
 
-        state = RobotState(model=model, current=initial_position)
+        state = RobotState(model=model, current=initial_position, desired=DesiredPosition())
 
         solution_state = ik_solver(state, target_pos, target_angle)
         solution = solution_state.current
@@ -317,7 +317,7 @@ class TestAngleConstraints:
         for initial_angles in initial_configs:
             initial_position = RobotPosition(joint_angles=initial_angles)
 
-            state = RobotState(model=model, current=initial_position)
+            state = RobotState(model=model, current=initial_position, desired=DesiredPosition())
 
             solution_state = ik_solver(state, target_pos, target_angle)
             solution = solution_state.current
@@ -350,7 +350,7 @@ class TestAngleConstraints:
 
         initial_position = RobotPosition(joint_angles=(0.0, 0.0, 0.0))
 
-        state = RobotState(model=model, current=initial_position)
+        state = RobotState(model=model, current=initial_position, desired=DesiredPosition())
 
         solution_state = ik_solver(state, target_pos, target_angle)
         solution = solution_state.current

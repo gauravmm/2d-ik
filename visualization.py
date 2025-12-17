@@ -4,7 +4,7 @@ from matplotlib.patches import Circle
 from matplotlib.lines import Line2D
 from matplotlib.backend_bases import MouseEvent, MouseButton, Event
 import matplotlib.animation as animation
-from datamodel import RobotModel, RobotPosition, RobotState
+from datamodel import DesiredPosition, RobotModel, RobotPosition, RobotState
 from typing import Callable, List, Literal, Optional, Sequence
 import logging
 
@@ -122,7 +122,7 @@ class RobotVisualizer:
                     "left" if event.button == MouseButton.LEFT else "right",
                 )
             else:
-                logger.warning(f"No callback registered!")
+                logger.warning("No callback registered!")
 
     def update(self, robot_state: RobotState):
         """Update the visualization with a new robot position.
@@ -146,8 +146,8 @@ class RobotVisualizer:
 
         # Update end effector
         if self.end_effector_circle:
-            if robot_state.desired_end_effector is not None:
-                self.end_effector_circle.center = robot_state.desired_end_effector
+            if robot_state.desired.ee_position is not None:
+                self.end_effector_circle.center = robot_state.desired.ee_position
             else:
                 self.end_effector_circle.center = (999.0, 999.0)
 
@@ -214,7 +214,7 @@ if __name__ == "__main__":
 
     # Initial position
     position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
-    state = RobotState(model, position, (0, 0))
+    state = RobotState(model, position, DesiredPosition(ee_position=(0, 0)))
 
     # Click handler
     def on_click(x, y, btn):
@@ -238,7 +238,9 @@ if __name__ == "__main__":
         )
         position = RobotPosition(joint_angles=new_angles)
         return RobotState(
-            model, position, (math.sin(frame * 0.04), math.cos(frame * 0.04))
+            model,
+            position,
+            DesiredPosition(ee_position=(math.sin(frame * 0.04), math.cos(frame * 0.04)))
         )
 
     # Run animation
