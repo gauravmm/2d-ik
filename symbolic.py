@@ -179,9 +179,9 @@ if __name__ == "__main__":
         global current_state
         print(f"\nClicked at: ({x:.2f}, {y:.2f}) {btn}")
 
-        new_end_effector_angle = current_state.desired.ee_angle
+        new_ee_angle = current_state.desired.ee_angle
         if btn == "right":
-            new_end_effector_angle = 0.0 if new_end_effector_angle is None else None
+            new_ee_angle = 0.0 if new_ee_angle is None else None
 
         # Create input state with current position
         input_state = RobotState(model, current_state.current, DesiredPosition())
@@ -189,7 +189,7 @@ if __name__ == "__main__":
         # Solve IK
         try:
             solution_state = ik_solver(
-                input_state, DesiredPosition(ee_position=(x, y), ee_angle=new_end_effector_angle)
+                input_state, DesiredPosition(ee_position=(x, y), ee_angle=new_ee_angle)
             )
             solution = solution_state.current
             print(f"Solution: {tuple(f'{a:.3f}' for a in solution.joint_angles)}")
