@@ -23,13 +23,14 @@ def test_simple_two_link():
 
     # Target position: (1.5, 0.5) - should be reachable
     target = (1.5, 0.5)
-    state = RobotState(model, initial_position, target)
+    state = RobotState(model, initial_position)
 
     # Solve IK
     print(f"Target position: {target}")
     print(f"Initial joint angles: {initial_position.joint_angles}")
 
-    solution = ik_solver(state)
+    solution_state = ik_solver(state, target)
+    solution = solution_state.current
     print(f"Solution joint angles: {solution.joint_angles}")
 
     # Verify the solution by computing forward kinematics
@@ -68,13 +69,14 @@ def test_three_link_robot():
 
     # Target position
     target = (1.8, 0.8)
-    state = RobotState(model, initial_position, target)
+    state = RobotState(model, initial_position)
 
     # Solve IK
     print(f"Target position: {target}")
     print(f"Initial joint angles: {initial_position.joint_angles}")
 
-    solution = ik_solver(state)
+    solution_state = ik_solver(state, target)
+    solution = solution_state.current
     print(f"Solution joint angles: {solution.joint_angles}")
 
     # Verify the solution
@@ -113,14 +115,15 @@ def test_unreachable_target():
 
     # Target position: (3.0, 0.0) - outside max reach of 2.0
     target = (3.0, 0.0)
-    state = RobotState(model, initial_position, target)
+    state = RobotState(model, initial_position)
 
     # Solve IK
     print(f"Target position: {target}")
     print(f"Robot max reach: {sum(model.link_lengths)}")
     print(f"Initial joint angles: {initial_position.joint_angles}")
 
-    solution = ik_solver(state)
+    solution_state = ik_solver(state, target)
+    solution = solution_state.current
     print(f"Solution joint angles: {solution.joint_angles}")
 
     # Verify the solution

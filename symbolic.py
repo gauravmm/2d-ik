@@ -185,14 +185,13 @@ if __name__ == "__main__":
         if btn == "right":
             new_end_effector_angle = 0.0 if new_end_effector_angle is None else None
 
-        # Update the desired end effector position
-        new_state = RobotState(
-            model, current_state.current, (x, y), new_end_effector_angle
-        )
+        # Create input state with current position
+        input_state = RobotState(model, current_state.current)
 
         # Solve IK
         try:
-            solution = ik_solver(new_state)
+            solution_state = ik_solver(input_state, (x, y), new_end_effector_angle)
+            solution = solution_state.current
             print(f"Solution: {tuple(f'{a:.3f}' for a in solution.joint_angles)}")
 
             # Verify the solution
@@ -202,7 +201,7 @@ if __name__ == "__main__":
             print(f"Position error: {error:.6f}")
 
             # Update the visualization with the new solution
-            current_state = RobotState(model, solution, (x, y), new_end_effector_angle)
+            current_state = solution_state
             viz.update(current_state)
 
         except Exception as e:
