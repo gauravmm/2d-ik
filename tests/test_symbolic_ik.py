@@ -29,7 +29,7 @@ def test_simple_two_link():
     print(f"Target position: {target}")
     print(f"Initial joint angles: {initial_position.joint_angles}")
 
-    solution_state = ik_solver(state, target)
+    solution_state = ik_solver(state, DesiredPosition(ee_position=target))
     solution = solution_state.current
     print(f"Solution joint angles: {solution.joint_angles}")
 
@@ -75,7 +75,7 @@ def test_three_link_robot():
     print(f"Target position: {target}")
     print(f"Initial joint angles: {initial_position.joint_angles}")
 
-    solution_state = ik_solver(state, target)
+    solution_state = ik_solver(state, DesiredPosition(ee_position=target))
     solution = solution_state.current
     print(f"Solution joint angles: {solution.joint_angles}")
 
@@ -122,7 +122,7 @@ def test_unreachable_target():
     print(f"Robot max reach: {sum(model.link_lengths)}")
     print(f"Initial joint angles: {initial_position.joint_angles}")
 
-    solution_state = ik_solver(state, target)
+    solution_state = ik_solver(state, DesiredPosition(ee_position=target))
     solution = solution_state.current
     print(f"Solution joint angles: {solution.joint_angles}")
 

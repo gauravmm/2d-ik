@@ -229,7 +229,7 @@ def time_ik_grid_solve(
 
             # Time the solve
             start = time.perf_counter()
-            ik_solver(state, target, locked_ee_angle)
+            ik_solver(state, DesiredPosition(ee_position=target, ee_angle=locked_ee_angle))
             end = time.perf_counter()
 
             warmup_times.append(end - start)
@@ -244,7 +244,7 @@ def time_ik_grid_solve(
 
         # Time the solve operation
         start = time.perf_counter()
-        solution_state = ik_solver(state, target, locked_ee_angle)
+        solution_state = ik_solver(state, DesiredPosition(ee_position=target, ee_angle=locked_ee_angle))
         end = time.perf_counter()
 
         solve_times.append(end - start)

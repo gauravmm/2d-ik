@@ -97,22 +97,21 @@ class IKSymbolic:
     def __call__(
         self,
         state: RobotState,
-        desired_end_effector: Position,
-        desired_end_effector_angle: Optional[float] = None,
+        desired: DesiredPosition,
     ) -> RobotState:
         # Sanity-check that state.model is the same as self.model
         if state.model != self.model:
             raise ValueError("State model does not match IKSymbolic model")
 
         # Get the desired end effector position
-        if desired_end_effector is None:
-            raise ValueError("State must have a desired_end_effector position")
+        if desired.ee_position is None:
+            raise ValueError("DesiredPosition must have an ee_position")
 
-        target_x, target_y = desired_end_effector
+        target_x, target_y = desired.ee_position
 
         # Extract angle constraint if present
-        if desired_end_effector_angle is not None:
-            target_angle = desired_end_effector_angle
+        if desired.ee_angle is not None:
+            target_angle = desired.ee_angle
             # Default angle weight - could be made configurable via RobotModel
             angle_weight = 1.0e3
         else:
@@ -151,7 +150,7 @@ class IKSymbolic:
         return RobotState(
             state.model,
             RobotPosition(joint_angles=joint_angles),
-            DesiredPosition(ee_position=desired_end_effector, ee_angle=desired_end_effector_angle),
+            desired,
         )
 
 
@@ -189,7 +188,9 @@ if __name__ == "__main__":
 
         # Solve IK
         try:
-            solution_state = ik_solver(input_state, (x, y), new_end_effector_angle)
+            solution_state = ik_solver(
+                input_state, DesiredPosition(ee_position=(x, y), ee_angle=new_end_effector_angle)
+            )
             solution = solution_state.current
             print(f"Solution: {tuple(f'{a:.3f}' for a in solution.joint_angles)}")
 
