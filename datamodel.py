@@ -153,13 +153,49 @@ class RegionBall:
 
     def line(self, c1: Tuple[sp.Expr, sp.Expr], c2: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
         """Compute the residual error of the line from c1 to c2 on this ball.
+        Positive return values indicate that the line collides with the ball.
 
-        Positive return values indicate that some segment of the line lies inside the
-        ball. The return value does not have any specific interpretable meaning.
-
-        Returns: residual error, if any
+        Returns: residual error, positive indicates collision.
         """
-        return sp.Max(self.point(c1), 0.0) + sp.Max(self.point(c2), 0.0)
+        # First check if either endpoint is inside the ball
+        p1 = self.point(c1)
+        p2 = self.point(c2)
+        endpoint_collision = sp.Max(p1, 0.0) + sp.Max(p2, 0.0)
+
+        # Compute projection of ball center onto the line segment
+        # Vector from c1 to c2
+        dx = c2[0] - c1[0]
+        dy = c2[1] - c1[1]
+
+        # Vector from c1 to ball center
+        cx = self.center[0] - c1[0]
+        cy = self.center[1] - c1[1]
+
+        # Compute length squared of line segment
+        length_sq = dx**2 + dy**2
+
+        # Compute projection parameter t: dot(c1->center, c1->c2) / ||c1->c2||^2
+        # t = 0 means projection is at c1, t = 1 means projection is at c2
+        t = (cx * dx + cy * dy) / (length_sq + 1e-10)
+
+        # Clamp t to [0, 1] to get the closest point on the line segment
+        t_clamped = sp.Max(0.0, sp.Min(1.0, t))
+
+        # Compute the closest point on the line segment
+        closest_x = c1[0] + t_clamped * dx
+        closest_y = c1[1] + t_clamped * dy
+
+        # Compute distance from ball center to closest point on line segment
+        dist_x = self.center[0] - closest_x
+        dist_y = self.center[1] - closest_y
+        perpendicular_distance = sp.sqrt(dist_x**2 + dist_y**2)
+
+        # Collision occurs if perpendicular distance is less than radius
+        # Return radius - perpendicular_distance (positive if collision)
+        segment_collision = sp.Max(self.radius - perpendicular_distance, 0.0)
+
+        # Return the maximum of endpoint collision and segment collision
+        return sp.Max(endpoint_collision, segment_collision)
 
 
 @dataclass(frozen=True)
