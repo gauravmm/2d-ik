@@ -251,8 +251,8 @@ class RegionRectangle:
         """Compute the residual error of the line segment from c1 to c2 on this rectangle.
 
         Positive return values indicate that the line segment collides with the rectangle.
-        Uses conservative bounding box check: returns positive if the line segment's
-        bounding box overlaps with the rectangle.
+        Uses exact geometric intersection: returns positive only if the line segment
+        actually intersects the rectangle.
 
         Returns: residual error, positive indicates collision.
         """
@@ -264,28 +264,61 @@ class RegionRectangle:
         x1, y1 = c1
         x2, y2 = c2
 
-        # Segment bounding box
-        seg_x_min = sp.Min(x1, x2)
-        seg_x_max = sp.Max(x1, x2)
-        seg_y_min = sp.Min(y1, y2)
-        seg_y_max = sp.Max(y1, y2)
+        # Vector from c1 to c2
+        dx = x2 - x1
+        dy = y2 - y1
 
-        # Check overlap in X dimension: segment [seg_x_min, seg_x_max] vs rectangle [left, right]
-        x_left_penetration = seg_x_max - self.left
-        x_right_penetration = self.right - seg_x_min
-        x_overlap = sp.Min(x_left_penetration, x_right_penetration)
+        # Check intersection with each of the 4 rectangle edges
+        # For each edge, compute parameter t where segment intersects edge
+        # Valid intersection requires t in [0, 1] and intersection point on edge
+        # We use a smooth approximation: if conditions are met, return positive value
 
-        # Check overlap in Y dimension
-        y_bottom_penetration = seg_y_max - self.bottom
-        y_top_penetration = self.top - seg_y_min
-        y_overlap = sp.Min(y_bottom_penetration, y_top_penetration)
+        # Helper function: returns positive if all conditions met, using smooth max/min
+        # If t in [0,1] and point in edge bounds, return 1.0, else 0.0
+        def edge_intersection_score(
+            t: sp.Expr, edge_coord: sp.Expr, edge_min: float, edge_max: float
+        ) -> sp.Expr:
+            # Check t in [0, 1]: min(t, 1-t) >= 0
+            t_valid = sp.Min(t, 1.0 - t)
+            # Check coord in [edge_min, edge_max]: min(coord - edge_min, edge_max - coord) >= 0
+            coord_valid = sp.Min(edge_coord - edge_min, edge_max - edge_coord)
+            # Both must be non-negative for valid intersection
+            # Return positive value if both are >= 0
+            return sp.Max(0.0, sp.Min(t_valid, coord_valid))
 
-        # Both dimensions must overlap for collision
-        # Use minimum of the two overlaps as the penetration depth
-        bounding_box_collision = sp.Max(0.0, sp.Min(x_overlap, y_overlap))
+        # Left edge (x = left, y in [bottom, top])
+        t_left = (self.left - x1) / (dx + 1e-10)
+        y_at_left = y1 + t_left * dy
+        left_collision = edge_intersection_score(
+            t_left, y_at_left, self.bottom, self.top
+        )
 
-        # Return maximum of endpoint and bounding box collisions
-        return sp.Max(endpoint_collision, bounding_box_collision)
+        # Right edge (x = right, y in [bottom, top])
+        t_right = (self.right - x1) / (dx + 1e-10)
+        y_at_right = y1 + t_right * dy
+        right_collision = edge_intersection_score(
+            t_right, y_at_right, self.bottom, self.top
+        )
+
+        # Bottom edge (y = bottom, x in [left, right])
+        t_bottom = (self.bottom - y1) / (dy + 1e-10)
+        x_at_bottom = x1 + t_bottom * dx
+        bottom_collision = edge_intersection_score(
+            t_bottom, x_at_bottom, self.left, self.right
+        )
+
+        # Top edge (y = top, x in [left, right])
+        t_top = (self.top - y1) / (dy + 1e-10)
+        x_at_top = x1 + t_top * dx
+        top_collision = edge_intersection_score(t_top, x_at_top, self.left, self.right)
+
+        # Total edge collision is the sum of all edge intersections
+        edge_collision = (
+            left_collision + right_collision + bottom_collision + top_collision
+        )
+
+        # Return maximum of endpoint and edge collisions
+        return sp.Max(endpoint_collision, edge_collision)
 
 
 Region = RegionHalfspace | RegionBall | RegionRectangle
