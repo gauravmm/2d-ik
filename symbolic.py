@@ -1,6 +1,6 @@
 #!python3
 
-from typing import Literal, Tuple
+from typing import Literal, Optional, Tuple
 
 import sympy as sp
 
@@ -150,7 +150,7 @@ class IKSymbolic:
         return RobotState(
             state.model,
             RobotPosition(joint_angles=joint_angles),
-            desired,
+            desired=desired,
         )
 
 
@@ -169,7 +169,7 @@ if __name__ == "__main__":
     # Initial position
     initial_position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
     global current_state
-    current_state = RobotState(model, initial_position, DesiredPosition())
+    current_state = RobotState(model, initial_position)
 
     # Create visualizer
     viz = RobotVisualizer(current_state)
@@ -179,12 +179,14 @@ if __name__ == "__main__":
         global current_state
         print(f"\nClicked at: ({x:.2f}, {y:.2f}) {btn}")
 
-        new_ee_angle = current_state.desired.ee_angle
+        new_ee_angle: Optional[float] = (
+            current_state.desired.ee_angle if current_state.desired else None
+        )
         if btn == "right":
             new_ee_angle = 0.0 if new_ee_angle is None else None
 
         # Create input state with current position
-        input_state = RobotState(model, current_state.current, DesiredPosition())
+        input_state = RobotState(model, current_state.current)
 
         # Solve IK
         try:

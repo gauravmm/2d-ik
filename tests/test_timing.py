@@ -224,7 +224,7 @@ def time_ik_grid_solve(
             target = (float(x_coords[idx]), float(y_coords[idx]))
             # Create zero initial position
             zero_position = RobotPosition(joint_angles=tuple(0.0 for _ in link_lengths))
-            state = RobotState(model, zero_position, DesiredPosition())
+            state = RobotState(model, zero_position)
 
             # Time the solve
             start = time.perf_counter()
@@ -241,7 +241,7 @@ def time_ik_grid_solve(
     zero_position = RobotPosition(joint_angles=tuple(0.0 for _ in link_lengths))
 
     for target in zip(x_coords, y_coords):
-        state = RobotState(model, zero_position, DesiredPosition())
+        state = RobotState(model, zero_position)
 
         # Time the solve operation
         start = time.perf_counter()

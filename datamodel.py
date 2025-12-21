@@ -2,7 +2,12 @@
 
 from dataclasses import dataclass, field
 import math
-from typing import List, Optional, Tuple
+from typing import Collection, List, Optional, Tuple
+
+
+#
+# Robot Model
+#
 
 
 @dataclass(frozen=True)
@@ -66,8 +71,33 @@ class RobotPosition:
 
 @dataclass(frozen=True)
 class DesiredPosition:
-    ee_position: Optional[Position] = None
+    ee_position: Position
     ee_angle: Optional[float] = None
+
+
+#
+# World Model
+#
+
+
+# These regions are used to limit the robot's access. These must all be convex and have a closed-form computation.
+@dataclass(frozen=True)
+class RegionHalfspace:
+    # Some halfspace (represented by )
+    pass
+
+
+Region = RegionHalfspace
+
+
+@dataclass(frozen=True)
+class WorldModel:
+    nogo: Collection[Region] = field(default=tuple())
+
+
+#
+# Overall state
+#
 
 
 @dataclass(frozen=True)
@@ -76,7 +106,8 @@ class RobotState:
 
     model: RobotModel
     current: RobotPosition
-    desired: DesiredPosition
+    world: WorldModel = field(default=WorldModel())
+    desired: Optional[DesiredPosition] = field(default=None)
 
     def get_joint_positions(self) -> List[Position]:
         """Convenience method to calculate joint positions using forward kinematics.

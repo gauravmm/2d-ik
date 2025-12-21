@@ -146,7 +146,10 @@ class RobotVisualizer:
 
         # Update end effector
         if self.end_effector_circle:
-            if robot_state.desired.ee_position is not None:
+            if (
+                robot_state.desired is not None
+                and robot_state.desired.ee_position is not None
+            ):
                 self.end_effector_circle.center = robot_state.desired.ee_position
             else:
                 self.end_effector_circle.center = (999.0, 999.0)
@@ -214,7 +217,7 @@ if __name__ == "__main__":
 
     # Initial position
     position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
-    state = RobotState(model, position, DesiredPosition(ee_position=(0, 0)))
+    state = RobotState(model, position, desired=DesiredPosition(ee_position=(0, 0)))
 
     # Click handler
     def on_click(x, y, btn):
@@ -240,7 +243,7 @@ if __name__ == "__main__":
         return RobotState(
             model,
             position,
-            DesiredPosition(
+            desired=DesiredPosition(
                 ee_position=(math.sin(frame * 0.04), math.cos(frame * 0.04))
             ),
         )

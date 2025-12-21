@@ -8,10 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Environment
 
-This project uses pyenv with the environment `ik2d`. Always activate it before running commands:
+This project uses a local venv. Always activate it before running commands:
 
 ```bash
-source ~/.pyenv/versions/ik2d/bin/activate
+source ~/.venv/bin/activate
 ```
 
 For running code that imports from the project, set PYTHONPATH:
@@ -31,6 +31,8 @@ python symbolic.py
 Opens matplotlib window with 3-link robot arm. Left-click to set target position. Right-click toggles end effector angle constraint on/off.
 
 ### Running Tests
+
+If you are running all tests, you should request the user to run them on your behalf. They have access to a test harness that is significantly faster when running all tests.
 
 ```bash
 # Run all tests
