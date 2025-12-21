@@ -152,8 +152,8 @@ class RegionBall:
         return self.radius - distance
 
     def line(self, c1: Tuple[sp.Expr, sp.Expr], c2: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
-        """Compute the residual error of the line from c1 to c2 on this ball.
-        Positive return values indicate that the line collides with the ball.
+        """Compute the residual error of the line segment from c1 to c2 on this ball.
+        Positive return values indicate that the line segment collides with the ball.
 
         Returns: residual error, positive indicates collision.
         """

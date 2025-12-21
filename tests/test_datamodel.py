@@ -349,19 +349,24 @@ class TestRegionBall:
         assert float(region.line((10.0, 0.0), (0.0, 10.0))) == pytest.approx(0.0)
         assert float(region.line((5.0, 0.0), (0.0, 5.0))) > 0  # Both on boundary
 
+    def test_line_segment(self):
+        """Test line segment with more difficult cases."""
+        region = RegionBall(center=(0.0, 0.0), radius=3.0)
+
+        # Cases where both points are outside, but the line segment intersects the ball:
+        assert float(region.line((-3.0, 1.0), (3.0, 1.0))) > 0.0
+        assert float(region.line((-3.0, 1.0), (1.0, -3.0))) > 0.0
+
+        # Cases where both points are outside, but the line segment does not intersect the ball:
+        assert float(region.line((4.0, 1.0), (3.0, 1.0))) == pytest.approx(0.0)
+        assert float(region.line((4.0, 1.0), (1.0, 4.0))) == pytest.approx(0.0)
+
     def test_line_non_origin_ball(self):
         """Test line segments with ball not centered at origin."""
         region = RegionBall(center=(3.0, 4.0), radius=2.0)
 
-        # Both endpoints inside
-        assert float(region.line((3.5, 4.0), (3.0, 4.5))) == pytest.approx(
-            3.0
-        )  # Both 0.5 from center
-
-        # One inside, one outside
-        assert float(region.line((3.0, 4.0), (6.0, 4.0))) == pytest.approx(
-            2.0
-        )  # Center and outside
+        assert float(region.line((3.5, 4.0), (3.0, 4.5))) == pytest.approx(3.0)
+        assert float(region.line((3.0, 4.0), (6.0, 4.0))) == pytest.approx(2.0)
 
     def test_line_with_symbolic_expressions(self):
         """Test line method with symbolic expressions."""
