@@ -247,6 +247,46 @@ class RegionRectangle:
         # Using sympy's Min to handle symbolic expressions
         return sp.Min(dist_to_left, dist_to_right, dist_to_bottom, dist_to_top)
 
+    def line(self, c1: Tuple[sp.Expr, sp.Expr], c2: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
+        """Compute the residual error of the line segment from c1 to c2 on this rectangle.
+
+        Positive return values indicate that the line segment collides with the rectangle.
+        Uses conservative bounding box check: returns positive if the line segment's
+        bounding box overlaps with the rectangle.
+
+        Returns: residual error, positive indicates collision.
+        """
+        # Check endpoint collisions
+        p1 = self.point(c1)
+        p2 = self.point(c2)
+        endpoint_collision = sp.Max(p1, 0.0) + sp.Max(p2, 0.0)
+
+        x1, y1 = c1
+        x2, y2 = c2
+
+        # Segment bounding box
+        seg_x_min = sp.Min(x1, x2)
+        seg_x_max = sp.Max(x1, x2)
+        seg_y_min = sp.Min(y1, y2)
+        seg_y_max = sp.Max(y1, y2)
+
+        # Check overlap in X dimension: segment [seg_x_min, seg_x_max] vs rectangle [left, right]
+        x_left_penetration = seg_x_max - self.left
+        x_right_penetration = self.right - seg_x_min
+        x_overlap = sp.Min(x_left_penetration, x_right_penetration)
+
+        # Check overlap in Y dimension
+        y_bottom_penetration = seg_y_max - self.bottom
+        y_top_penetration = self.top - seg_y_min
+        y_overlap = sp.Min(y_bottom_penetration, y_top_penetration)
+
+        # Both dimensions must overlap for collision
+        # Use minimum of the two overlaps as the penetration depth
+        bounding_box_collision = sp.Max(0.0, sp.Min(x_overlap, y_overlap))
+
+        # Return maximum of endpoint and bounding box collisions
+        return sp.Max(endpoint_collision, bounding_box_collision)
+
 
 Region = RegionHalfspace | RegionBall | RegionRectangle
 

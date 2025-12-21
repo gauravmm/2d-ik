@@ -497,3 +497,55 @@ class TestRegionRectangle:
         assert float(region.point((-6.0, -4.0))) == 3.0
         assert float(region.point((-12.0, -4.0))) == -2.0  # Outside left
         assert float(region.point((0.0, -4.0))) == -2.0  # Outside right
+
+    def test_line_simple(self):
+        """Test line segment with simple cases."""
+        region = RegionRectangle(left=0.0, right=4.0, bottom=0.0, top=4.0)
+
+        assert float(region.line((1.0, 1.0), (2.0, 2.0))) > 0.0  # Both inside
+        assert float(region.line((2.0, 2.0), (5.0, 2.0))) > 0.0  # One inside, one outside
+        assert float(region.line((5.0, 5.0), (6.0, 6.0))) == pytest.approx(0.0)  # Both outside, no intersection
+        assert float(region.line((0.0, 0.0), (0.0, 0.0))) == pytest.approx(0.0)  # Zero-length segment at corner (on boundary)
+
+    def test_line_segment(self):
+        """Test line segment collision with rectangles."""
+        region = RegionRectangle(left=0.0, right=4.0, bottom=0.0, top=4.0)
+
+        # Both endpoints outside, horizontal segment crosses rectangle
+        assert float(region.line((-1.0, 2.0), (5.0, 2.0))) > 0.0
+
+        # Both endpoints outside, vertical segment crosses rectangle
+        assert float(region.line((2.0, -1.0), (2.0, 5.0))) > 0.0
+
+        # Diagonal segment through rectangle
+        assert float(region.line((-1.0, -1.0), (5.0, 5.0))) > 0.0
+
+        # Segment on boundary (left edge) - returns 0 as both endpoints are on boundary
+        assert float(region.line((0.0, 1.0), (0.0, 3.0))) == pytest.approx(0.0)
+
+        # Segment parallel to rectangle but outside
+        assert float(region.line((5.0, 0.0), (5.0, 4.0))) == pytest.approx(0.0)
+
+    def test_line_non_origin_rectangle(self):
+        """Test line segments with rectangle not at origin."""
+        region = RegionRectangle(left=-2.0, right=2.0, bottom=-2.0, top=2.0)
+
+        assert float(region.line((0.0, 0.0), (1.0, 1.0))) > 0.0  # Both inside
+        assert float(region.line((-3.0, 0.0), (3.0, 0.0))) > 0.0  # Crosses through center
+        assert float(region.line((3.0, 3.0), (4.0, 4.0))) == pytest.approx(0.0)  # Both outside
+
+    def test_line_with_symbolic_expressions(self):
+        """Test line method with symbolic expressions."""
+        region = RegionRectangle(left=0.0, right=4.0, bottom=0.0, top=4.0)
+
+        # Create symbolic variables
+        x1 = sp.Symbol("x1", real=True)
+        y1 = sp.Symbol("y1", real=True)
+        x2 = sp.Symbol("x2", real=True)
+        y2 = sp.Symbol("y2", real=True)
+
+        result = region.line((x1, y1), (x2, y2))
+        assert isinstance(result, sp.Expr)  # Verify it's a symbolic expression
+
+        assert float(result.subs([(x1, 1.0), (y1, 1.0), (x2, 2.0), (y2, 2.0)])) > 0.0  # Both inside
+        assert float(result.subs([(x1, 5.0), (y1, 5.0), (x2, 6.0), (y2, 6.0)])) == pytest.approx(0.0)  # Both outside

@@ -20,43 +20,9 @@ For running code that imports from the project, set PYTHONPATH:
 PYTHONPATH=/home/gauravmm/2d-ik python3 <command>
 ```
 
-## Common Commands
-
-### Running the Interactive Demo
-
-```bash
-python symbolic.py
-```
-
-Opens matplotlib window with 3-link robot arm. Left-click to set target position. Right-click toggles end effector angle constraint on/off.
-
 ### Running Tests
 
-If you are running all tests, you should request the user to run them on your behalf. They have access to a test harness that is significantly faster when running all tests.
-
-```bash
-# Run all tests
-python3 -m pytest
-
-# Run specific test file
-python3 -m pytest tests/test_datamodel.py
-python3 -m pytest tests/test_symbolic_ik.py
-
-# Run with verbose output
-python3 -m pytest -v
-```
-
-Note: `test_symbolic_ik.py` can also be run directly as a script:
-
-```bash
-python tests/test_symbolic_ik.py
-```
-
-### Type Checking
-
-```bash
-mypy datamodel.py symbolic.py visualization.py
-```
+If you are running all tests, you should request the user to run them on your behalf.
 
 ## Architecture
 
