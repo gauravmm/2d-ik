@@ -411,6 +411,65 @@ class TestRegionBall:
         result = region2.point((5.0, 12.0))  # distance = 13
         assert result == pytest.approx(0.0)
 
+    def test_line_simple(self):
+        """Test line segment with simple cases."""
+        region = RegionBall(center=(0.0, 0.0), radius=5.0)
+
+        # Both endpoints well inside
+        assert float(region.line((1.0, 1.0), (2.0, 2.0))) > 0.0
+
+        # One inside, one outside
+        assert float(region.line((2, 0), (8, 0))) == pytest.approx(3.0)
+
+        # Both endpoints at center
+        assert float(region.line((0.0, 0.0), (0.0, 0.0))) == pytest.approx(10.0)
+
+        # Both endpoints outside
+        assert float(region.line((10.0, 0.0), (0.0, 10.0))) == pytest.approx(0.0)
+
+        # Both endpoints on boundary.
+        assert float(region.line((5.0, 0.0), (0.0, 5.0))) > 0
+
+    def test_line_non_origin_ball(self):
+        """Test line segments with ball not centered at origin."""
+        region = RegionBall(center=(3.0, 4.0), radius=2.0)
+
+        # Both endpoints inside relative to center (3, 4)
+        c1 = (3.5, 4.0)  # distance from center = 0.5, residual = 2 - 0.5 = 1.5
+        c2 = (3.0, 4.5)  # distance from center = 0.5, residual = 2 - 0.5 = 1.5
+        result = region.line(c1, c2)
+        # Max(1.5, 0) + Max(1.5, 0) = 3.0
+        assert float(result) == pytest.approx(3.0)
+
+        # One inside, one outside
+        c1 = (3.0, 4.0)  # at center, residual = 2
+        c2 = (6.0, 4.0)  # distance = 3, residual = 2 - 3 = -1
+        result = region.line(c1, c2)
+        # Max(2, 0) + Max(-1, 0) = 2 + 0 = 2
+        assert float(result) == pytest.approx(2.0)
+
+    def test_line_with_symbolic_expressions(self):
+        """Test line method with symbolic expressions."""
+        region = RegionBall(center=(0.0, 0.0), radius=5.0)
+
+        # Create symbolic variables
+        x1 = sp.Symbol("x1", real=True)
+        y1 = sp.Symbol("y1", real=True)
+        x2 = sp.Symbol("x2", real=True)
+        y2 = sp.Symbol("y2", real=True)
+
+        # Get symbolic result
+        result = region.line((x1, y1), (x2, y2))
+        assert isinstance(result, sp.Expr)
+
+        # Evaluate with both points inside
+        evaluated = result.subs([(x1, 1.0), (y1, 1.0), (x2, 2.0), (y2, 2.0)])
+        assert float(evaluated) == pytest.approx(5.758, abs=0.01)
+
+        # Evaluate with both points outside
+        evaluated = result.subs([(x1, 10.0), (y1, 0.0), (x2, 0.0), (y2, 10.0)])
+        assert float(evaluated) == 0.0
+
 
 class TestRegionRectangle:
     """Test cases for RegionRectangle.point method."""

@@ -112,6 +112,16 @@ class RegionHalfspace:
         # Dot product with normal: normal · (point - anchor)
         return self.normal[0] * dx + self.normal[1] * dy
 
+    def line(self, c1: Tuple[sp.Expr, sp.Expr], c2: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
+        """Compute the residual error of the line from c1 to c2 on this halfspace.
+
+        Positive return values indicate that some segment of the line lies inside the
+        halfspace. The return value does not have any specific interpretable meaning.
+
+        Returns: residual error, if any
+        """
+        return sp.Max(self.point(c1), 0.0) + sp.Max(self.point(c2), 0.0)
+
 
 @dataclass(frozen=True)
 class RegionBall:
@@ -140,6 +150,16 @@ class RegionBall:
 
         # Return radius - distance (positive when inside)
         return self.radius - distance
+
+    def line(self, c1: Tuple[sp.Expr, sp.Expr], c2: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
+        """Compute the residual error of the line from c1 to c2 on this ball.
+
+        Positive return values indicate that some segment of the line lies inside the
+        ball. The return value does not have any specific interpretable meaning.
+
+        Returns: residual error, if any
+        """
+        return sp.Max(self.point(c1), 0.0) + sp.Max(self.point(c2), 0.0)
 
 
 @dataclass(frozen=True)
