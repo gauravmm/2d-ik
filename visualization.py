@@ -240,7 +240,9 @@ if __name__ == "__main__":
         return RobotState(
             model,
             position,
-            DesiredPosition(ee_position=(math.sin(frame * 0.04), math.cos(frame * 0.04)))
+            DesiredPosition(
+                ee_position=(math.sin(frame * 0.04), math.cos(frame * 0.04))
+            ),
         )
 
     # Run animation

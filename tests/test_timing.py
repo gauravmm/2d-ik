@@ -11,7 +11,6 @@ The main helper function time_ik_grid_solve() constructs a robot model,
 solves IK for a dense grid of points, and measures timing with warmup.
 """
 
-
 import time
 import statistics
 import math
@@ -229,7 +228,9 @@ def time_ik_grid_solve(
 
             # Time the solve
             start = time.perf_counter()
-            ik_solver(state, DesiredPosition(ee_position=target, ee_angle=locked_ee_angle))
+            ik_solver(
+                state, DesiredPosition(ee_position=target, ee_angle=locked_ee_angle)
+            )
             end = time.perf_counter()
 
             warmup_times.append(end - start)
@@ -244,7 +245,9 @@ def time_ik_grid_solve(
 
         # Time the solve operation
         start = time.perf_counter()
-        solution_state = ik_solver(state, DesiredPosition(ee_position=target, ee_angle=locked_ee_angle))
+        solution_state = ik_solver(
+            state, DesiredPosition(ee_position=target, ee_angle=locked_ee_angle)
+        )
         end = time.perf_counter()
 
         solve_times.append(end - start)
@@ -286,9 +289,9 @@ def test_three_link_timing(
     # Assertions for reasonable performance
     mean_solve = statistics.mean(results.solve_times)
     assert mean_solve < 0.01, f"Mean solve time {mean_solve:.3f}s exceeds 10ms"
-    assert (
-        results.solver_init_time < 10.0
-    ), f"Solver init time {results.solver_init_time:.3f}s exceeds 10s"
+    assert results.solver_init_time < 10.0, (
+        f"Solver init time {results.solver_init_time:.3f}s exceeds 10s"
+    )
     assert len(results.solve_times) == grid_size**2, "Expected 225 grid points"
 
     return results

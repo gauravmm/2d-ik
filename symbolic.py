@@ -1,10 +1,10 @@
 #!python3
 
-from typing import Any, Callable, Literal, Optional, Tuple
+from typing import Literal, Tuple
 
 import sympy as sp
 
-from datamodel import DesiredPosition, Position, RobotModel, RobotPosition, RobotState
+from datamodel import DesiredPosition, RobotModel, RobotPosition, RobotState
 
 
 class IKSymbolic:

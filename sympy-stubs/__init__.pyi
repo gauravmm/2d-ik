@@ -43,7 +43,7 @@ def symbols(
     positive: bool = False,
     negative: bool = False,
     integer: bool = False,
-    **assumptions: Any
+    **assumptions: Any,
 ) -> Union[Symbol, tuple[Symbol, ...]]: ...
 def cos(x: Union[Expr, float, int]) -> Expr:
     """Cosine function."""
@@ -69,7 +69,7 @@ def lambdify(
     args: Union[Symbol, Sequence[Symbol]],
     expr: Union[Expr, Sequence[Expr]],
     modules: Union[str, list[str], None] = None,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> Callable[..., Any]:
     """Convert a SymPy expression to a numerical function."""
     ...
@@ -85,5 +85,5 @@ def nsolve(
     x0: Union[list[float], dict[Symbol, float]],
     *,
     dict: bool = False,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> Union[dict[Symbol, float], list[float], float]: ...
