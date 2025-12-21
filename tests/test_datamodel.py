@@ -5,7 +5,13 @@ import math
 import pytest
 import sympy as sp
 
-from datamodel import RegionBall, RegionHalfspace, RobotModel, RobotPosition
+from datamodel import (
+    RegionBall,
+    RegionHalfspace,
+    RegionRectangle,
+    RobotModel,
+    RobotPosition,
+)
 
 
 class TestGetJointPositions:
@@ -166,8 +172,8 @@ class TestGetJointPositions:
 class TestRegionHalfspace:
     """Test cases for RegionHalfspace.point method."""
 
-    def test_point_on_boundary(self):
-        """Test that a point on the boundary returns zero residual."""
+    def test_horizontal_halfspace(self):
+        """Test halfspace with normal pointing right (horizontal boundary)."""
         # Halfspace with normal pointing right (1, 0), anchor at origin
         region = RegionHalfspace(normal=(1.0, 0.0), anchor=(0.0, 0.0))
 
@@ -175,29 +181,17 @@ class TestRegionHalfspace:
         result = region.point((0.0, 0.0))
         assert result == 0.0
 
-    def test_point_inside_halfspace(self):
-        """Test that points inside the halfspace return positive residual."""
-        # Halfspace with normal pointing right (1, 0), anchor at origin
-        region = RegionHalfspace(normal=(1.0, 0.0), anchor=(0.0, 0.0))
-
-        # Point to the right (inside)
+        # Points to the right (inside)
         result = region.point((2.0, 0.0))
         assert result == 2.0
 
-        # Another point inside
         result = region.point((5.0, 3.0))
         assert result == 5.0  # Only x-component matters with normal (1,0)
 
-    def test_point_outside_halfspace(self):
-        """Test that points outside the halfspace return negative residual."""
-        # Halfspace with normal pointing right (1, 0), anchor at origin
-        region = RegionHalfspace(normal=(1.0, 0.0), anchor=(0.0, 0.0))
-
-        # Point to the left (outside)
+        # Points to the left (outside)
         result = region.point((-3.0, 0.0))
         assert result == -3.0
 
-        # Another point outside
         result = region.point((-1.0, 5.0))
         assert result == -1.0
 
@@ -289,19 +283,26 @@ class TestRegionHalfspace:
 class TestRegionBall:
     """Test cases for RegionBall.point method."""
 
-    def test_point_at_center(self):
-        """Test that a point at the center has maximum positive residual."""
+    def test_ball_at_origin(self):
+        """Test ball centered at origin with various points."""
         region = RegionBall(center=(0.0, 0.0), radius=5.0)
 
         # Point at center
         result = region.point((0.0, 0.0))
         assert result == 5.0  # radius - 0
 
-    def test_point_on_boundary(self):
-        """Test that a point on the boundary returns zero residual."""
+        # Points inside
+        result = region.point((3.0, 0.0))
+        assert result == pytest.approx(2.0)  # 5 - 3
+
+        result = region.point((3.0, 4.0))  # distance = 5
+        assert result == pytest.approx(0.0)  # 5 - 5 (on boundary)
+
+    def test_ball_boundary_points(self):
+        """Test points on the boundary of a ball."""
         region = RegionBall(center=(0.0, 0.0), radius=3.0)
 
-        # Point on boundary (distance = radius)
+        # Points on boundary (distance = radius)
         result = region.point((3.0, 0.0))
         assert result == pytest.approx(0.0)
 
@@ -313,20 +314,8 @@ class TestRegionBall:
         result = region.point((dist, dist))
         assert result == pytest.approx(0.0)
 
-    def test_point_inside_ball(self):
-        """Test that points inside the ball return positive residual."""
-        region = RegionBall(center=(0.0, 0.0), radius=5.0)
-
-        # Point at (3, 0) - distance is 3
-        result = region.point((3.0, 0.0))
-        assert result == pytest.approx(2.0)  # 5 - 3
-
-        # Point at (3, 4) - distance is 5, but inside due to radius
-        result = region.point((3.0, 4.0))
-        assert result == pytest.approx(0.0)  # 5 - 5
-
-    def test_point_outside_ball(self):
-        """Test that points outside the ball return negative residual."""
+    def test_ball_outside_points(self):
+        """Test points outside a ball."""
         region = RegionBall(center=(0.0, 0.0), radius=2.0)
 
         # Point at (3, 0) - distance is 3
@@ -337,7 +326,7 @@ class TestRegionBall:
         result = region.point((3.0, 4.0))
         assert result == pytest.approx(-3.0)  # 2 - 5
 
-    def test_non_origin_center(self):
+    def test_ball_non_origin_center(self):
         """Test ball with center not at origin."""
         region = RegionBall(center=(2.0, 3.0), radius=4.0)
 
@@ -421,3 +410,182 @@ class TestRegionBall:
         assert result == pytest.approx(0.0)
         result = region2.point((5.0, 12.0))  # distance = 13
         assert result == pytest.approx(0.0)
+
+
+class TestRegionRectangle:
+    """Test cases for RegionRectangle.point method."""
+
+    def test_rectangle_at_origin(self):
+        """Test rectangle at origin with various points."""
+        region = RegionRectangle(left=0.0, right=10.0, bottom=0.0, top=10.0)
+
+        # Point at center (5, 5) - all edges are 5 units away
+        result = region.point((5.0, 5.0))
+        assert float(result) == 5.0
+
+        # Points inside near edges
+        result = region.point((1.0, 5.0))  # Near left
+        assert float(result) == 1.0
+
+        result = region.point((9.0, 5.0))  # Near right
+        assert float(result) == 1.0
+
+        result = region.point((5.0, 1.0))  # Near bottom
+        assert float(result) == 1.0
+
+        result = region.point((5.0, 9.0))  # Near top
+        assert float(result) == 1.0
+
+        # Points on each edge
+        result = region.point((0.0, 5.0))  # On left edge
+        assert float(result) == 0.0
+
+        result = region.point((10.0, 5.0))  # On right edge
+        assert float(result) == 0.0
+
+        result = region.point((5.0, 0.0))  # On bottom edge
+        assert float(result) == 0.0
+
+        result = region.point((5.0, 10.0))  # On top edge
+        assert float(result) == 0.0
+
+        # All four corners
+        result = region.point((0.0, 0.0))  # Bottom-left
+        assert float(result) == 0.0
+
+        result = region.point((10.0, 0.0))  # Bottom-right
+        assert float(result) == 0.0
+
+        result = region.point((0.0, 10.0))  # Top-left
+        assert float(result) == 0.0
+
+        result = region.point((10.0, 10.0))  # Top-right
+        assert float(result) == 0.0
+
+        # Points outside each edge
+        result = region.point((-2.0, 5.0))  # Left
+        assert float(result) == -2.0
+
+        result = region.point((13.0, 5.0))  # Right
+        assert float(result) == -3.0
+
+        result = region.point((5.0, -4.0))  # Bottom
+        assert float(result) == -4.0
+
+        result = region.point((5.0, 15.0))  # Top
+        assert float(result) == -5.0
+
+        # Points outside corners (closest edge matters)
+        result = region.point((-2.0, -3.0))  # Bottom-left: min(-2, -3) = -3
+        assert float(result) == -3.0
+
+        result = region.point((12.0, 15.0))  # Top-right: min(-2, -5) = -5
+        assert float(result) == -5.0
+
+    def test_rectangle_non_origin(self):
+        """Test rectangle not centered at origin."""
+        region = RegionRectangle(left=-5.0, right=5.0, bottom=-3.0, top=3.0)
+
+        # Point at center (0, 0) - edges at: left=5, right=5, bottom=3, top=3
+        result = region.point((0.0, 0.0))
+        assert float(result) == 3.0  # Closest edge is top/bottom at 3
+
+        # Point on left edge
+        result = region.point((-5.0, 0.0))
+        assert float(result) == 0.0
+
+        # Point outside left
+        result = region.point((-7.0, 0.0))
+        assert float(result) == -2.0
+
+    def test_rectangle_small(self):
+        """Test small rectangle."""
+        region = RegionRectangle(left=1.0, right=2.0, bottom=1.0, top=2.0)
+
+        # Point at center (1.5, 1.5)
+        result = region.point((1.5, 1.5))
+        assert float(result) == 0.5
+
+        # Point outside
+        result = region.point((0.0, 1.5))
+        assert float(result) == -1.0
+
+    def test_rectangle_non_square(self):
+        """Test wide and tall (non-square) rectangles."""
+        # Wide rectangle
+        region_wide = RegionRectangle(left=0.0, right=20.0, bottom=0.0, top=5.0)
+
+        # Point at (10, 2.5) - closer to top/bottom (2.5) than sides (10)
+        result = region_wide.point((10.0, 2.5))
+        assert float(result) == 2.5
+
+        # Point at (2, 2.5) - closer to left (2) than top/bottom (2.5)
+        result = region_wide.point((2.0, 2.5))
+        assert float(result) == 2.0
+
+        # Tall rectangle
+        region_tall = RegionRectangle(left=0.0, right=5.0, bottom=0.0, top=20.0)
+
+        # Point at (2.5, 10) - closer to left/right (2.5) than top/bottom (10)
+        result = region_tall.point((2.5, 10.0))
+        assert float(result) == 2.5
+
+        # Point at (2.5, 3) - closer to bottom (3) than sides (2.5)
+        result = region_tall.point((2.5, 3.0))
+        assert float(result) == 2.5
+
+    def test_with_symbolic_expressions(self):
+        """Test that the method works with sympy symbolic expressions."""
+        region = RegionRectangle(left=0.0, right=10.0, bottom=0.0, top=10.0)
+
+        # Create symbolic variables
+        x = sp.Symbol("x", real=True)
+        y = sp.Symbol("y", real=True)
+
+        # Get symbolic result
+        result = region.point((x, y))
+
+        # Verify it's a symbolic expression
+        assert isinstance(result, sp.Expr)
+
+        # Evaluate at center (5, 5)
+        evaluated = result.subs([(x, 5.0), (y, 5.0)])
+        assert float(evaluated) == 5.0
+
+        # Evaluate outside (15, 5)
+        evaluated = result.subs([(x, 15.0), (y, 5.0)])
+        assert float(evaluated) == -5.0
+
+    def test_invalid_boundaries(self):
+        """Test that invalid boundary specifications raise errors."""
+        # Left >= right should raise ValueError
+        with pytest.raises(ValueError, match="left.*must be less than right"):
+            RegionRectangle(left=10.0, right=5.0, bottom=0.0, top=10.0)
+
+        # Bottom >= top should raise ValueError
+        with pytest.raises(ValueError, match="bottom.*must be less than top"):
+            RegionRectangle(left=0.0, right=10.0, bottom=10.0, top=5.0)
+
+        # Equal boundaries should also fail
+        with pytest.raises(ValueError, match="left.*must be less than right"):
+            RegionRectangle(left=5.0, right=5.0, bottom=0.0, top=10.0)
+
+        with pytest.raises(ValueError, match="bottom.*must be less than top"):
+            RegionRectangle(left=0.0, right=10.0, bottom=5.0, top=5.0)
+
+    def test_rectangle_negative_coordinates(self):
+        """Test rectangle with negative coordinates."""
+        region = RegionRectangle(left=-10.0, right=-2.0, bottom=-8.0, top=-1.0)
+
+        # Point inside
+        result = region.point((-6.0, -4.0))
+        # Distances: left=4, right=4, bottom=3, top=3
+        assert float(result) == 3.0
+
+        # Point outside left
+        result = region.point((-12.0, -4.0))
+        assert float(result) == -2.0
+
+        # Point outside right
+        result = region.point((0.0, -4.0))
+        assert float(result) == -2.0

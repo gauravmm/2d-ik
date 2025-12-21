@@ -142,7 +142,57 @@ class RegionBall:
         return self.radius - distance
 
 
-Region = RegionHalfspace | RegionBall
+@dataclass(frozen=True)
+class RegionRectangle:
+    """Axis-aligned rectangle region defined by left, right, bottom, and top boundaries.
+
+    Points inside the rectangle satisfy: left <= x <= right and bottom <= y <= top
+    """
+
+    left: float  # Left boundary (minimum x)
+    right: float  # Right boundary (maximum x)
+    bottom: float  # Bottom boundary (minimum y)
+    top: float  # Top boundary (maximum y)
+
+    def __post_init__(self):
+        """Validate that boundaries are correctly ordered."""
+        if self.left >= self.right:
+            raise ValueError(
+                f"left ({self.left}) must be less than right ({self.right})"
+            )
+        if self.bottom >= self.top:
+            raise ValueError(
+                f"bottom ({self.bottom}) must be less than top ({self.top})"
+            )
+
+    def point(self, coordinate: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
+        """Compute the residual error to the closest boundary.
+
+        Positive return values indicate that the point lies inside the rectangle.
+
+        Returns:
+            Minimum distance to any boundary (negative if outside)
+            Positive = inside, negative = outside
+
+        For points inside: returns the distance to the nearest edge
+        For points outside: returns the negative distance to the nearest edge
+        """
+        x, y = coordinate
+
+        # Distance to each boundary (positive when inside)
+        dist_to_left = x - self.left  # Positive when x > left
+        dist_to_right = self.right - x  # Positive when x < right
+        dist_to_bottom = y - self.bottom  # Positive when y > bottom
+        dist_to_top = self.top - y  # Positive when y < top
+
+        # The minimum of these distances determines the residual
+        # If all are positive, point is inside and residual is distance to nearest edge
+        # If any is negative, point is outside and residual is the most negative value
+        # Using sympy's Min to handle symbolic expressions
+        return sp.Min(dist_to_left, dist_to_right, dist_to_bottom, dist_to_top)
+
+
+Region = RegionHalfspace | RegionBall | RegionRectangle
 
 
 @dataclass(frozen=True)

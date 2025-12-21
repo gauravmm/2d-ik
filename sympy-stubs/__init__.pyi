@@ -67,6 +67,14 @@ def sqrt(x: Union[Expr, float, int]) -> Expr:
     """Square root function."""
     ...
 
+def Min(*args: Union[Expr, float, int]) -> Expr:
+    """Minimum of multiple expressions."""
+    ...
+
+def Max(*args: Union[Expr, float, int]) -> Expr:
+    """Maximum of multiple expressions."""
+    ...
+
 def simplify(expr: Expr) -> Expr:
     """Simplify a SymPy expression."""
     ...
