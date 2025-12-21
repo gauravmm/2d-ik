@@ -450,23 +450,13 @@ class TestRegionRectangle:
         """Test wide and tall (non-square) rectangles."""
         # Wide rectangle
         region_wide = RegionRectangle(left=0.0, right=20.0, bottom=0.0, top=5.0)
-
-        assert (
-            float(region_wide.point((10.0, 2.5))) == 2.5
-        )  # Closer to top/bottom (2.5) than sides (10)
-        assert (
-            float(region_wide.point((2.0, 2.5))) == 2.0
-        )  # Closer to left (2) than top/bottom (2.5)
+        assert float(region_wide.point((10.0, 2.5))) == 2.5
+        assert float(region_wide.point((2.0, 2.5))) == 2.0
 
         # Tall rectangle
         region_tall = RegionRectangle(left=0.0, right=5.0, bottom=0.0, top=20.0)
-
-        assert (
-            float(region_tall.point((2.5, 10.0))) == 2.5
-        )  # Closer to left/right (2.5) than top/bottom (10)
-        assert (
-            float(region_tall.point((2.5, 3.0))) == 2.5
-        )  # Closer to bottom (3) than sides (2.5)
+        assert float(region_tall.point((2.5, 10.0))) == 2.5
+        assert float(region_tall.point((2.5, 3.0))) == 2.5
 
     def test_with_symbolic_expressions(self):
         """Test that the method works with sympy symbolic expressions."""
@@ -478,15 +468,10 @@ class TestRegionRectangle:
 
         # Get symbolic result
         result = region.point((x, y))
-
         assert isinstance(result, sp.Expr)  # Verify it's a symbolic expression
 
-        assert (
-            float(result.subs([(x, 5.0), (y, 5.0)])) == 5.0
-        )  # Evaluate at center (5, 5)
-        assert (
-            float(result.subs([(x, 15.0), (y, 5.0)])) == -5.0
-        )  # Evaluate outside (15, 5)
+        assert float(result.subs([(x, 5.0), (y, 5.0)])) == 5.0
+        assert float(result.subs([(x, 15.0), (y, 5.0)])) == -5.0
 
     def test_invalid_boundaries(self):
         """Test that invalid boundary specifications raise errors."""
@@ -509,8 +494,6 @@ class TestRegionRectangle:
         """Test rectangle with negative coordinates."""
         region = RegionRectangle(left=-10.0, right=-2.0, bottom=-8.0, top=-1.0)
 
-        assert (
-            float(region.point((-6.0, -4.0))) == 3.0
-        )  # Inside: distances left=4, right=4, bottom=3, top=3
+        assert float(region.point((-6.0, -4.0))) == 3.0
         assert float(region.point((-12.0, -4.0))) == -2.0  # Outside left
         assert float(region.point((0.0, -4.0))) == -2.0  # Outside right
