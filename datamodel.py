@@ -86,21 +86,63 @@ class DesiredPosition:
 # numbers indicate the point is outside the region.
 @dataclass(frozen=True)
 class RegionHalfspace:
-    # Some halfspace (represented by a 2d normal vector.)
+    """Halfspace region defined by: normal · (point - anchor) >= 0
+
+    Points inside the halfspace satisfy the inequality.
+    The normal vector points toward the interior of the halfspace.
+    """
+
+    normal: Tuple[float, float]  # Normal vector pointing inward
+    anchor: Tuple[float, float]  # Point on the boundary plane
 
     def point(self, coordinate: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
-        return sp.Float()
+        """Compute the residual error of the point on this halfspace.
+
+        Positive return values indicate that the point lies inside the halfspace.
+
+        Returns:
+            Signed distance: normal · (point - anchor)
+            Positive = inside, negative = outside
+        """
+        x, y = coordinate
+        # Vector from anchor to point
+        dx = x - self.anchor[0]
+        dy = y - self.anchor[1]
+
+        # Dot product with normal: normal · (point - anchor)
+        return self.normal[0] * dx + self.normal[1] * dy
 
 
 @dataclass(frozen=True)
 class RegionBall:
-    # Some ball (represented by the center and radius.)
+    """Ball (circle) region defined by points within radius r from center.
+
+    Points inside the ball satisfy: ||point - center|| <= radius
+    """
+
+    center: Tuple[float, float]  # Center of the ball
+    radius: float  # Radius of the ball
 
     def point(self, coordinate: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
-        return sp.Float()
+        """Compute the residual error of the point on this ball.
+
+        Positive return values indicate that the point lies inside the ball.
+
+        Returns:
+            radius - distance_to_center
+            Positive = inside, negative = outside
+        """
+        x, y = coordinate
+        # Distance from center to point
+        dx = x - self.center[0]
+        dy = y - self.center[1]
+        distance = sp.sqrt(dx**2 + dy**2)
+
+        # Return radius - distance (positive when inside)
+        return self.radius - distance
 
 
-Region = RegionHalfspace
+Region = RegionHalfspace | RegionBall
 
 
 @dataclass(frozen=True)

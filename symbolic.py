@@ -29,6 +29,11 @@ class IKSymbolic:
         angle_weight = sp.Symbol("angle_weight", real=True, positive=True)
 
         # Build symbolic forward kinematics equations
+        # Store positions and angles at each joint for boundary checking
+        joint_x_syms: list[sp.Expr] = []
+        joint_y_syms: list[sp.Expr] = []
+        joint_angles_syms: list[sp.Expr] = []
+
         x_sym: sp.Expr = sp.Float(0)
         y_sym: sp.Expr = sp.Float(0)
         cumulative_angle = sp.Float(0)
@@ -43,12 +48,22 @@ class IKSymbolic:
             x_sym = x_sym + link_length * sp.cos(cumulative_angle)
             y_sym = y_sym + link_length * sp.sin(cumulative_angle)
 
+            # Store position and angle at this joint
+            joint_x_syms.append(x_sym)
+            joint_y_syms.append(y_sym)
+            joint_angles_syms.append(cumulative_angle)
+
         # Store the symbolic end effector position equations
         self.end_effector_x: sp.Expr = x_sym
         self.end_effector_y: sp.Expr = y_sym
 
         # Store the symbolic end effector orientation
         self.end_effector_angle: sp.Expr = cumulative_angle
+
+        # Store symbolic positions and angles at each joint for boundary checking
+        self.joint_x_syms: Tuple[sp.Expr, ...] = tuple(joint_x_syms)
+        self.joint_y_syms: Tuple[sp.Expr, ...] = tuple(joint_y_syms)
+        self.joint_angles_syms: Tuple[sp.Expr, ...] = tuple(joint_angles_syms)
 
         # Create distance squared function
         distance_squared = (x_sym - target_x) ** 2 + (y_sym - target_y) ** 2

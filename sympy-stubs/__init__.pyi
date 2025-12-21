@@ -19,6 +19,16 @@ class Expr:
     def __pow__(self, other: Any) -> Expr: ...
     def __rpow__(self, other: Any) -> Expr: ...
     def __neg__(self) -> Expr: ...
+    def subs(
+        self,
+        substitutions: Union[
+            dict[Symbol, Union[float, int, Expr]],
+            list[tuple[Symbol, Union[float, int, Expr]]],
+            tuple[tuple[Symbol, Union[float, int, Expr]], ...],
+        ],
+    ) -> Expr:
+        """Substitute symbols with values in the expression."""
+        ...
 
 class Symbol(Expr):
     """A symbolic variable."""
@@ -51,6 +61,10 @@ def cos(x: Union[Expr, float, int]) -> Expr:
 
 def sin(x: Union[Expr, float, int]) -> Expr:
     """Sine function."""
+    ...
+
+def sqrt(x: Union[Expr, float, int]) -> Expr:
+    """Square root function."""
     ...
 
 def simplify(expr: Expr) -> Expr:
