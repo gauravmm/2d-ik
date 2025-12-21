@@ -3,6 +3,7 @@
 from typing import Literal, Optional, Tuple
 
 import sympy as sp
+from scipy.optimize import minimize
 
 from datamodel import DesiredPosition, RobotModel, RobotPosition, RobotState
 
@@ -87,7 +88,7 @@ class IKSymbolic:
             "numpy",
         )
 
-        # Function to compute end effector angle for verification
+        # Function to compute end effector angle for verification, primarily for testing.
         self.angle_func = sp.lambdify(
             list(self.theta_symbols),
             self.end_effector_angle,
@@ -118,9 +119,6 @@ class IKSymbolic:
             # No angle constraint - use dummy values with zero weight
             target_angle = 0.0  # Dummy value, won't affect optimization
             angle_weight = 0.0  # Zero weight disables angle constraint
-
-        # Use scipy for optimization with precomputed distance and gradient functions
-        from scipy.optimize import minimize
 
         # Initial guess from current state
         x0 = list(state.current.joint_angles)

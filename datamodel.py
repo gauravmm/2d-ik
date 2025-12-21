@@ -1,9 +1,10 @@
 #!python3
 
-from dataclasses import dataclass, field
 import math
+from dataclasses import dataclass, field
 from typing import Collection, List, Optional, Tuple
 
+import sympy as sp
 
 #
 # Robot Model
@@ -81,10 +82,22 @@ class DesiredPosition:
 
 
 # These regions are used to limit the robot's access. These must all be convex and have a closed-form computation.
+# Each Region returns a residual error, where positive numbers indicate the point lies inside the region and negative
+# numbers indicate the point is outside the region.
 @dataclass(frozen=True)
 class RegionHalfspace:
-    # Some halfspace (represented by )
-    pass
+    # Some halfspace (represented by a 2d normal vector.)
+
+    def point(self, coordinate: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
+        return sp.Float()
+
+
+@dataclass(frozen=True)
+class RegionBall:
+    # Some ball (represented by the center and radius.)
+
+    def point(self, coordinate: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
+        return sp.Float()
 
 
 Region = RegionHalfspace
