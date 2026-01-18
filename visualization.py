@@ -1,11 +1,20 @@
 from matplotlib import artist
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle
+from matplotlib.patches import Circle, Rectangle, Polygon
 from matplotlib.lines import Line2D
 from matplotlib.backend_bases import MouseEvent, MouseButton, Event
 import matplotlib.animation as animation
-from datamodel import DesiredPosition, RobotModel, RobotPosition, RobotState
+from datamodel import (
+    DesiredPosition,
+    RegionBall,
+    RegionHalfspace,
+    RegionRectangle,
+    RobotModel,
+    RobotPosition,
+    RobotState,
+)
 from typing import Callable, List, Literal, Optional, Sequence
+import numpy as np
 import logging
 
 logger = logging.getLogger(__name__)
@@ -68,8 +77,80 @@ class RobotVisualizer:
         self._update_view_limits()
         self.update(self.robot_state)
 
+    def _render_world_regions(self):
+        """Render the nogo regions from the WorldModel as pink shapes."""
+        world = self.robot_state.world
+        if not world.nogo:
+            return
+
+        # Get the view bounds for rendering halfspaces
+        max_reach = sum(self.robot_state.model.link_lengths)
+        bound = max_reach * self.scale_margin * 2
+
+        for region in world.nogo:
+            if isinstance(region, RegionBall):
+                # Render as a filled circle
+                circle = Circle(
+                    region.center,
+                    region.radius,
+                    color="pink",
+                    fill=True,
+                    alpha=0.7,
+                    zorder=0,
+                )
+                self.ax.add_patch(circle)
+
+            elif isinstance(region, RegionRectangle):
+                # Render as a filled rectangle
+                rect = Rectangle(
+                    (region.left, region.bottom),
+                    region.right - region.left,
+                    region.top - region.bottom,
+                    color="pink",
+                    fill=True,
+                    alpha=0.7,
+                    zorder=0,
+                )
+                self.ax.add_patch(rect)
+
+            elif isinstance(region, RegionHalfspace):
+                # Render as a large polygon covering the halfspace
+                # The halfspace is defined as: normal · (point - anchor) >= 0
+                # Points satisfying this are "inside" the halfspace (the nogo region)
+                nx, ny = region.normal
+                ax, ay = region.anchor
+
+                # Normalize the normal vector
+                norm_len = np.sqrt(nx * nx + ny * ny)
+                if norm_len < 1e-10:
+                    continue
+                nx, ny = nx / norm_len, ny / norm_len
+
+                # Direction along the boundary (perpendicular to normal)
+                tx, ty = -ny, nx
+
+                # Create a large polygon representing the halfspace
+                # Start from anchor and extend in both directions along boundary
+                # Then extend "into" the halfspace (in the direction of the normal)
+                p1 = (ax - tx * bound, ay - ty * bound)
+                p2 = (ax + tx * bound, ay + ty * bound)
+                p3 = (ax + tx * bound + nx * bound, ay + ty * bound + ny * bound)
+                p4 = (ax - tx * bound + nx * bound, ay - ty * bound + ny * bound)
+
+                poly = Polygon(
+                    [p1, p2, p3, p4],
+                    color="pink",
+                    fill=True,
+                    alpha=0.7,
+                    zorder=0,
+                )
+                self.ax.add_patch(poly)
+
     def _setup_plot_elements(self):
         """Create the plot elements for links and joints."""
+        # Render world regions first (so they appear behind the robot)
+        self._render_world_regions()
+
         num_links = len(self.robot_state.model.link_lengths)
 
         # Create link lines
