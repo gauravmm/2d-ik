@@ -5,16 +5,25 @@ from typing import Literal, Optional, Tuple
 import sympy as sp
 from scipy.optimize import minimize
 
-from datamodel import DesiredPosition, RobotModel, RobotPosition, RobotState
+from datamodel import (
+    DesiredPosition,
+    RegionHalfspace,
+    RegionRectangle,
+    RobotModel,
+    RobotPosition,
+    RobotState,
+    WorldModel,
+)
 
 
 class IKSymbolic:
     """Implements a symbolic solver for inverse kinematics using the Sympy solver."""
 
-    def __init__(self, model: RobotModel) -> None:
+    def __init__(self, model: RobotModel, world: WorldModel | None) -> None:
         # Create variables for each joint rotation and set up a system of equations that
         # relate each end effector position
         self.model = model
+        self.nogo = world and world.nogo
         self.n_joints = len(model.link_lengths)
 
         # Create symbolic variables for joint angles
@@ -175,6 +184,13 @@ if __name__ == "__main__":
 
     # Create a 3-link robot
     model = RobotModel(link_lengths=(1.0, 0.8, 0.6))
+    # Create a world with a narrow space to enter.
+    nogo = [
+        RegionHalfspace((0, -1), (0, -0.2)),
+        RegionRectangle(0.5, 10.0, -10.0, 1.0),
+        RegionRectangle(0.5, 10.0, 1.6, 5.0),
+    ]
+    world = WorldModel(nogo=nogo)
 
     # Create the IK solver
     ik_solver = IKSymbolic(model)
@@ -182,7 +198,7 @@ if __name__ == "__main__":
     # Initial position
     initial_position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
     global current_state
-    current_state = RobotState(model, initial_position)
+    current_state = RobotState(model, current=initial_position, world=world)
 
     # Create visualizer
     viz = RobotVisualizer(current_state)

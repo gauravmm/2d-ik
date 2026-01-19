@@ -20,6 +20,8 @@ For running code that imports from the project, set PYTHONPATH:
 PYTHONPATH=/home/gauravmm/2d-ik python3 <command>
 ```
 
+If you change more than a few lines of code, commit all changes you make with a short message.
+
 ### Running Tests
 
 If you are running all tests, you should request the user to run them on your behalf.

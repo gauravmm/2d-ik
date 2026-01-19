@@ -12,6 +12,7 @@ from datamodel import (
     RobotModel,
     RobotPosition,
     RobotState,
+    WorldModel,
 )
 from typing import Callable, List, Literal, Optional, Sequence
 import numpy as np
@@ -298,7 +299,17 @@ if __name__ == "__main__":
 
     # Initial position
     position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
-    state = RobotState(model, position, desired=DesiredPosition(ee_position=(0, 0)))
+    nogo = [
+        RegionHalfspace((0, -1), (0, -0.2)),
+        RegionRectangle(0.5, 10.0, -10.0, 1.0),
+        RegionRectangle(0.5, 10.0, 1.6, 5.0),
+    ]
+    world = WorldModel(nogo=nogo)
+
+    state = RobotState(
+        model, position, world=world, desired=DesiredPosition(ee_position=(0, 0))
+    )
+    # TODO: Allow the visualizer to deal with changing world models.
 
     # Click handler
     def on_click(x, y, btn):
