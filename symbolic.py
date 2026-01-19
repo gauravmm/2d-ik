@@ -193,7 +193,7 @@ if __name__ == "__main__":
     world = WorldModel(nogo=nogo)
 
     # Create the IK solver
-    ik_solver = IKSymbolic(model)
+    ik_solver = IKSymbolic(model, world=world)
 
     # Initial position
     initial_position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))

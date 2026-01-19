@@ -66,6 +66,7 @@ class RobotVisualizer:
         self.link_lines: list[Line2D] = []
         self.joint_circles: list[Circle] = []
         self.end_effector_circle: Optional[Circle] = None
+        self.world_region_patches: list[artist.Artist] = []
 
         # Set up click event handling
         if self.click_callback:
@@ -78,8 +79,17 @@ class RobotVisualizer:
         self._update_view_limits()
         self.update(self.robot_state)
 
+    def _clear_world_regions(self):
+        """Remove all existing world region patches from the plot."""
+        for patch in self.world_region_patches:
+            patch.remove()
+        self.world_region_patches.clear()
+
     def _render_world_regions(self):
         """Render the nogo regions from the WorldModel as pink shapes."""
+        # Clear existing world region patches first
+        self._clear_world_regions()
+
         world = self.robot_state.world
         if not world.nogo:
             return
@@ -100,6 +110,7 @@ class RobotVisualizer:
                     zorder=0,
                 )
                 self.ax.add_patch(circle)
+                self.world_region_patches.append(circle)
 
             elif isinstance(region, RegionRectangle):
                 # Render as a filled rectangle
@@ -113,6 +124,7 @@ class RobotVisualizer:
                     zorder=0,
                 )
                 self.ax.add_patch(rect)
+                self.world_region_patches.append(rect)
 
             elif isinstance(region, RegionHalfspace):
                 # Render as a large polygon covering the halfspace
@@ -146,6 +158,7 @@ class RobotVisualizer:
                     zorder=0,
                 )
                 self.ax.add_patch(poly)
+                self.world_region_patches.append(poly)
 
     def _setup_plot_elements(self):
         """Create the plot elements for links and joints."""
@@ -212,7 +225,12 @@ class RobotVisualizer:
         Args:
             robot_state: New RobotState to display
         """
+        # Check if world model has changed and re-render regions if needed
+        old_world = self.robot_state.world
         self.robot_state = robot_state
+
+        if robot_state.world is not old_world:
+            self._render_world_regions()
 
         # Get joint positions
         positions = robot_state.get_joint_positions()
@@ -309,7 +327,6 @@ if __name__ == "__main__":
     state = RobotState(
         model, position, world=world, desired=DesiredPosition(ee_position=(0, 0))
     )
-    # TODO: Allow the visualizer to deal with changing world models.
 
     # Click handler
     def on_click(x, y, btn):
