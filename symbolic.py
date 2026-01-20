@@ -7,6 +7,8 @@ from scipy.optimize import minimize
 
 from datamodel import (
     DesiredPosition,
+    Region,
+    RegionBall,
     RegionHalfspace,
     RegionRectangle,
     RobotModel,
@@ -14,6 +16,236 @@ from datamodel import (
     RobotState,
     WorldModel,
 )
+
+
+# Helper classes for computing symbolic expressions for region collision detection.
+# These are separated from the Region dataclasses to allow different solvers to use
+# different implementations (e.g., symbolic vs numerical).
+
+
+class SymbolicRegionHalfspace:
+    """Symbolic collision detection for RegionHalfspace."""
+
+    def __init__(self, region: RegionHalfspace):
+        self.region = region
+
+    def point(self, coordinate: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
+        """Compute the residual error of the point on this halfspace.
+
+        Positive return values indicate that the point lies inside the halfspace.
+
+        Returns:
+            Signed distance: normal · (point - anchor)
+            Positive = inside, negative = outside
+        """
+        x, y = coordinate
+        # Vector from anchor to point
+        dx = x - self.region.anchor[0]
+        dy = y - self.region.anchor[1]
+
+        # Dot product with normal: normal · (point - anchor)
+        return self.region.normal[0] * dx + self.region.normal[1] * dy
+
+    def line(self, c1: Tuple[sp.Expr, sp.Expr], c2: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
+        """Compute the residual error of the line from c1 to c2 on this halfspace.
+
+        Positive return values indicate that some segment of the line lies inside the
+        halfspace. The return value does not have any specific interpretable meaning.
+
+        Returns: residual error, if any
+        """
+        return sp.Max(self.point(c1), 0.0) + sp.Max(self.point(c2), 0.0)
+
+
+class SymbolicRegionBall:
+    """Symbolic collision detection for RegionBall."""
+
+    def __init__(self, region: RegionBall):
+        self.region = region
+
+    def point(self, coordinate: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
+        """Compute the residual error of the point on this ball.
+
+        Positive return values indicate that the point lies inside the ball.
+
+        Returns:
+            radius - distance_to_center
+            Positive = inside, negative = outside
+        """
+        x, y = coordinate
+        # Distance from center to point
+        dx = x - self.region.center[0]
+        dy = y - self.region.center[1]
+        distance = sp.sqrt(dx**2 + dy**2)
+
+        # Return radius - distance (positive when inside)
+        return self.region.radius - distance
+
+    def line(self, c1: Tuple[sp.Expr, sp.Expr], c2: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
+        """Compute the residual error of the line segment from c1 to c2 on this ball.
+        Positive return values indicate that the line segment collides with the ball.
+
+        Returns: residual error, positive indicates collision.
+        """
+        # First check if either endpoint is inside the ball
+        p1 = self.point(c1)
+        p2 = self.point(c2)
+        endpoint_collision = sp.Max(p1, 0.0) + sp.Max(p2, 0.0)
+
+        # Compute projection of ball center onto the line segment
+        # Vector from c1 to c2
+        dx = c2[0] - c1[0]
+        dy = c2[1] - c1[1]
+
+        # Vector from c1 to ball center
+        cx = self.region.center[0] - c1[0]
+        cy = self.region.center[1] - c1[1]
+
+        # Compute length squared of line segment
+        length_sq = dx**2 + dy**2
+
+        # Compute projection parameter t: dot(c1->center, c1->c2) / ||c1->c2||^2
+        # t = 0 means projection is at c1, t = 1 means projection is at c2
+        t = (cx * dx + cy * dy) / (length_sq + 1e-10)
+
+        # Clamp t to [0, 1] to get the closest point on the line segment
+        t_clamped = sp.Max(0.0, sp.Min(1.0, t))
+
+        # Compute the closest point on the line segment
+        closest_x = c1[0] + t_clamped * dx
+        closest_y = c1[1] + t_clamped * dy
+
+        # Compute distance from ball center to closest point on line segment
+        dist_x = self.region.center[0] - closest_x
+        dist_y = self.region.center[1] - closest_y
+        perpendicular_distance = sp.sqrt(dist_x**2 + dist_y**2)
+
+        # Collision occurs if perpendicular distance is less than radius
+        # Return radius - perpendicular_distance (positive if collision)
+        segment_collision = sp.Max(self.region.radius - perpendicular_distance, 0.0)
+
+        # Return the maximum of endpoint collision and segment collision
+        return sp.Max(endpoint_collision, segment_collision)
+
+
+class SymbolicRegionRectangle:
+    """Symbolic collision detection for RegionRectangle."""
+
+    def __init__(self, region: RegionRectangle):
+        self.region = region
+
+    def point(self, coordinate: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
+        """Compute the residual error to the closest boundary.
+
+        Positive return values indicate that the point lies inside the rectangle.
+
+        Returns:
+            Minimum distance to any boundary (negative if outside)
+            Positive = inside, negative = outside
+
+        For points inside: returns the distance to the nearest edge
+        For points outside: returns the negative distance to the nearest edge
+        """
+        x, y = coordinate
+
+        # Distance to each boundary (positive when inside)
+        dist_to_left = x - self.region.left  # Positive when x > left
+        dist_to_right = self.region.right - x  # Positive when x < right
+        dist_to_bottom = y - self.region.bottom  # Positive when y > bottom
+        dist_to_top = self.region.top - y  # Positive when y < top
+
+        # The minimum of these distances determines the residual
+        # If all are positive, point is inside and residual is distance to nearest edge
+        # If any is negative, point is outside and residual is the most negative value
+        # Using sympy's Min to handle symbolic expressions
+        return sp.Min(dist_to_left, dist_to_right, dist_to_bottom, dist_to_top)
+
+    def line(self, c1: Tuple[sp.Expr, sp.Expr], c2: Tuple[sp.Expr, sp.Expr]) -> sp.Expr:
+        """Compute the residual error of the line segment from c1 to c2 on this rectangle.
+
+        Positive return values indicate that the line segment collides with the rectangle.
+        Uses exact geometric intersection: returns positive only if the line segment
+        actually intersects the rectangle.
+
+        Returns: residual error, positive indicates collision.
+        """
+        # Check endpoint collisions
+        p1 = self.point(c1)
+        p2 = self.point(c2)
+        endpoint_collision = sp.Max(p1, 0.0) + sp.Max(p2, 0.0)
+
+        x1, y1 = c1
+        x2, y2 = c2
+
+        # Vector from c1 to c2
+        dx = x2 - x1
+        dy = y2 - y1
+
+        # Check intersection with each of the 4 rectangle edges
+        # For each edge, compute parameter t where segment intersects edge
+        # Valid intersection requires t in [0, 1] and intersection point on edge
+        # We use a smooth approximation: if conditions are met, return positive value
+
+        # Helper function: returns positive if all conditions met, using smooth max/min
+        # If t in [0,1] and point in edge bounds, return 1.0, else 0.0
+        def edge_intersection_score(
+            t: sp.Expr, edge_coord: sp.Expr, edge_min: float, edge_max: float
+        ) -> sp.Expr:
+            # Check t in [0, 1]: min(t, 1-t) >= 0
+            t_valid = sp.Min(t, 1.0 - t)
+            # Check coord in [edge_min, edge_max]: min(coord - edge_min, edge_max - coord) >= 0
+            coord_valid = sp.Min(edge_coord - edge_min, edge_max - edge_coord)
+            # Both must be non-negative for valid intersection
+            # Return positive value if both are >= 0
+            return sp.Max(0.0, sp.Min(t_valid, coord_valid))
+
+        # Left edge (x = left, y in [bottom, top])
+        t_left = (self.region.left - x1) / (dx + 1e-10)
+        y_at_left = y1 + t_left * dy
+        left_collision = edge_intersection_score(
+            t_left, y_at_left, self.region.bottom, self.region.top
+        )
+
+        # Right edge (x = right, y in [bottom, top])
+        t_right = (self.region.right - x1) / (dx + 1e-10)
+        y_at_right = y1 + t_right * dy
+        right_collision = edge_intersection_score(
+            t_right, y_at_right, self.region.bottom, self.region.top
+        )
+
+        # Bottom edge (y = bottom, x in [left, right])
+        t_bottom = (self.region.bottom - y1) / (dy + 1e-10)
+        x_at_bottom = x1 + t_bottom * dx
+        bottom_collision = edge_intersection_score(
+            t_bottom, x_at_bottom, self.region.left, self.region.right
+        )
+
+        # Top edge (y = top, x in [left, right])
+        t_top = (self.region.top - y1) / (dy + 1e-10)
+        x_at_top = x1 + t_top * dx
+        top_collision = edge_intersection_score(
+            t_top, x_at_top, self.region.left, self.region.right
+        )
+
+        # Total edge collision is the sum of all edge intersections
+        edge_collision = (
+            left_collision + right_collision + bottom_collision + top_collision
+        )
+
+        # Return maximum of endpoint and edge collisions
+        return sp.Max(endpoint_collision, edge_collision)
+
+
+def make_symbolic_region(region: Region):
+    """Factory function to create the appropriate symbolic region helper."""
+    if isinstance(region, RegionHalfspace):
+        return SymbolicRegionHalfspace(region)
+    elif isinstance(region, RegionBall):
+        return SymbolicRegionBall(region)
+    elif isinstance(region, RegionRectangle):
+        return SymbolicRegionRectangle(region)
+    else:
+        raise TypeError(f"Unknown region type: {type(region)}")
 
 
 class IKSymbolic:
@@ -108,8 +340,9 @@ class IKSymbolic:
 
                 # Check each nogo region
                 for region in self.nogo:
-                    # Use Region.line() to get penalty for this segment
-                    segment_penalty = region.line(p1, p2)
+                    # Use symbolic region helper to get penalty for this segment
+                    symbolic_region = make_symbolic_region(region)
+                    segment_penalty = symbolic_region.line(p1, p2)
                     # Square the penalty to make it smooth and differentiable
                     nogo_penalty = nogo_penalty + segment_penalty**2
 
