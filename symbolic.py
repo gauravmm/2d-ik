@@ -86,6 +86,8 @@ class IKSymbolic:
         # Combined objective: position error + weighted angle error
         # When angle_weight = 0, this reduces to position-only optimization
         combined_objective = distance_squared + angle_weight * angle_error_squared
+        # Simplify the combined objective function
+        combined_objective_simplified = sp.simplify(combined_objective)
 
         # Add nogo zone penalty for each link
         if self.nogo:
@@ -115,9 +117,6 @@ class IKSymbolic:
             self.nogo_weight_symbol = nogo_weight
         else:
             self.nogo_weight_symbol = None
-
-        # Simplify the combined objective function
-        combined_objective_simplified = sp.simplify(combined_objective)
 
         # Compute the gradient (derivative with respect to each joint angle)
         gradient = [
@@ -204,10 +203,8 @@ class IKSymbolic:
         # Extract joint angles from solution
         joint_angles = tuple(float(angle) for angle in result.x)
 
-        return RobotState(
-            state.model,
-            RobotPosition(joint_angles=joint_angles),
-            desired=desired,
+        return state.with_position(
+            RobotPosition(joint_angles=joint_angles), desired=desired
         )
 
 
@@ -249,13 +246,11 @@ if __name__ == "__main__":
         if btn == "right":
             new_ee_angle = 0.0 if new_ee_angle is None else None
 
-        # Create input state with current position
-        input_state = RobotState(model, current_state.current)
-
         # Solve IK
         try:
             solution_state = ik_solver(
-                input_state, DesiredPosition(ee_position=(x, y), ee_angle=new_ee_angle)
+                current_state,
+                DesiredPosition(ee_position=(x, y), ee_angle=new_ee_angle),
             )
             solution = solution_state.current
             print(f"Solution: {tuple(f'{a:.3f}' for a in solution.joint_angles)}")

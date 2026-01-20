@@ -350,3 +350,13 @@ class RobotState:
             A list of (x, y) tuples representing the position of each joint.
         """
         return self.model.forward_kinematics(self.current)
+
+    def with_position(
+        self, position: RobotPosition, desired: DesiredPosition | None = None
+    ):
+        return RobotState(
+            self.model,
+            current=position,
+            world=self.world,
+            desired=desired or self.desired or None,
+        )
