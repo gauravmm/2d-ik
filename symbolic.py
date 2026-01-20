@@ -87,7 +87,7 @@ class IKSymbolic:
         # When angle_weight = 0, this reduces to position-only optimization
         combined_objective = distance_squared + angle_weight * angle_error_squared
         # Simplify the combined objective function
-        combined_objective_simplified = sp.simplify(combined_objective)
+        combined_objective = sp.simplify(combined_objective)
 
         # Add nogo zone penalty for each link
         if self.nogo:
@@ -119,10 +119,7 @@ class IKSymbolic:
             self.nogo_weight_symbol = None
 
         # Compute the gradient (derivative with respect to each joint angle)
-        gradient = [
-            sp.diff(combined_objective_simplified, theta)
-            for theta in self.theta_symbols
-        ]
+        gradient = [sp.diff(combined_objective, theta) for theta in self.theta_symbols]
         gradient_simplified = [sp.simplify(g) for g in gradient]
 
         # Convert to numerical functions
@@ -133,7 +130,7 @@ class IKSymbolic:
 
         self.combined_objective_func = sp.lambdify(
             base_params + list(self.theta_symbols),
-            combined_objective_simplified,
+            combined_objective,
             "numpy",
         )
 
@@ -158,6 +155,12 @@ class IKSymbolic:
         # Sanity-check that state.model is the same as self.model
         if state.model != self.model:
             raise ValueError("State model does not match IKSymbolic model")
+
+        # Known bug:
+        if state.world.nogo:
+            print(
+                "WARNING: nogo zones are not supported by the IKSymbolic solver due to slowdown in the simplify steps."
+            )
 
         # Get the desired end effector position
         if desired.ee_position is None:
