@@ -87,6 +87,35 @@ class IKSymbolic:
         # When angle_weight = 0, this reduces to position-only optimization
         combined_objective = distance_squared + angle_weight * angle_error_squared
 
+        # Add nogo zone penalty for each link
+        if self.nogo:
+            nogo_weight = sp.Symbol("nogo_weight", real=True, positive=True)
+            nogo_penalty: sp.Expr = sp.Float(0)
+
+            # Build list of joint positions including origin
+            joint_positions: list[tuple[sp.Expr, sp.Expr]] = [
+                (sp.Float(0), sp.Float(0))
+            ]
+            for jx, jy in zip(joint_x_syms, joint_y_syms):
+                joint_positions.append((jx, jy))
+
+            # For each link (segment between consecutive joints)
+            for i in range(len(joint_positions) - 1):
+                p1 = joint_positions[i]
+                p2 = joint_positions[i + 1]
+
+                # Check each nogo region
+                for region in self.nogo:
+                    # Use Region.line() to get penalty for this segment
+                    segment_penalty = region.line(p1, p2)
+                    # Square the penalty to make it smooth and differentiable
+                    nogo_penalty = nogo_penalty + segment_penalty**2
+
+            combined_objective = combined_objective + nogo_weight * nogo_penalty
+            self.nogo_weight_symbol = nogo_weight
+        else:
+            self.nogo_weight_symbol = None
+
         # Simplify the combined objective function
         combined_objective_simplified = sp.simplify(combined_objective)
 
@@ -98,16 +127,19 @@ class IKSymbolic:
         gradient_simplified = [sp.simplify(g) for g in gradient]
 
         # Convert to numerical functions
-        # Objective function takes (target_x, target_y, target_angle, angle_weight, theta0, theta1, ...)
+        # Build parameter list: (target_x, target_y, target_angle, angle_weight, [nogo_weight], theta0, theta1, ...)
+        base_params = [target_x, target_y, target_angle, angle_weight]
+        if self.nogo_weight_symbol is not None:
+            base_params.append(self.nogo_weight_symbol)
+
         self.combined_objective_func = sp.lambdify(
-            [target_x, target_y, target_angle, angle_weight] + list(self.theta_symbols),
+            base_params + list(self.theta_symbols),
             combined_objective_simplified,
             "numpy",
         )
 
-        # Gradient function takes (target_x, target_y, target_angle, angle_weight, theta0, theta1, ...)
         self.combined_gradient_func = sp.lambdify(
-            [target_x, target_y, target_angle, angle_weight] + list(self.theta_symbols),
+            base_params + list(self.theta_symbols),
             gradient_simplified,
             "numpy",
         )
@@ -147,16 +179,19 @@ class IKSymbolic:
         # Initial guess from current state
         x0 = list(state.current.joint_angles)
 
+        # Build base parameters for objective/gradient calls
+        base_args = [target_x, target_y, target_angle, angle_weight]
+        if self.nogo_weight_symbol is not None:
+            # Default nogo weight - high penalty for violations
+            nogo_weight = 1.0e4
+            base_args.append(nogo_weight)
+
         # Define objective function and gradient with fixed target and weight
         def objective(thetas):
-            return self.combined_objective_func(
-                target_x, target_y, target_angle, angle_weight, *thetas
-            )
+            return self.combined_objective_func(*base_args, *thetas)
 
         def gradient(thetas):
-            grad_result = self.combined_gradient_func(
-                target_x, target_y, target_angle, angle_weight, *thetas
-            )
+            grad_result = self.combined_gradient_func(*base_args, *thetas)
             # Handle case where gradient might be a single value (1 joint) or array
             if hasattr(grad_result, "__iter__"):
                 return grad_result
