@@ -380,15 +380,8 @@ class IKNumeric:
         )
 
         # Use Adam optimizer with learning rate annealing
-        start_lr = 0.1
-        end_lr = 0.04
-        optimizer = torch.optim.Adam([thetas], lr=start_lr)
-        scheduler = torch.optim.lr_scheduler.LinearLR(
-            optimizer,
-            start_factor=1.0,
-            end_factor=end_lr / start_lr,
-            total_iters=self.max_iterations,
-        )
+        optimizer = torch.optim.Adam([thetas], lr=self.lr)
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
 
         # Start profiling
         start_time = time.perf_counter()
@@ -472,10 +465,14 @@ if __name__ == "__main__":
     world = WorldModel(nogo=nogo)
 
     # Create the IK solver
-    ik_solver = IKNumeric(model, world=world, collision_geometry="line")
+    ik_solver = IKNumeric(
+        model, world=world, collision_geometry="line", max_iterations=200, lr=0.06
+    )
 
     # Initial position
-    initial_position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
+    initial_position = RobotPosition(
+        joint_angles=(2.5 * math.pi / 4, -math.pi + 0.1, math.pi - 0.1)
+    )
     current_state = RobotState(model, current=initial_position, world=world)
 
     # Create visualizer
