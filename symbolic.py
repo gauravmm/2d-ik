@@ -473,8 +473,7 @@ class IKSymbolic:
         # Build bounds for L-BFGS-B optimizer
         # Convert None to (-inf, inf) for unconstrained joints
         bounds = [
-            (b[0], b[1]) if b is not None else (None, None)
-            for b in self.joint_bounds
+            (b[0], b[1]) if b is not None else (None, None) for b in self.joint_bounds
         ]
 
         # Minimize distance to target using L-BFGS-B with analytical gradient and bounds
@@ -497,7 +496,11 @@ if __name__ == "__main__":
     # Create a 3-link robot
     model = RobotModel(
         link_lengths=(1.0, 0.8, 0.6),
-        joint_limits=((0.4 * math.pi, math.pi), None, None),
+        joint_limits=(
+            (0.4 * math.pi, math.pi),
+            (-math.pi, 0),
+            (-math.pi / 2, math.pi / 2),
+        ),
     )
     # Create a world with a narrow space to enter.
     nogo = [
