@@ -19,6 +19,16 @@ class Expr:
     def __pow__(self, other: Any) -> Expr: ...
     def __rpow__(self, other: Any) -> Expr: ...
     def __neg__(self) -> Expr: ...
+    def subs(
+        self,
+        substitutions: Union[
+            dict[Symbol, Union[float, int, Expr]],
+            list[tuple[Symbol, Union[float, int, Expr]]],
+            tuple[tuple[Symbol, Union[float, int, Expr]], ...],
+        ],
+    ) -> Expr:
+        """Substitute symbols with values in the expression."""
+        ...
 
 class Symbol(Expr):
     """A symbolic variable."""
@@ -43,7 +53,7 @@ def symbols(
     positive: bool = False,
     negative: bool = False,
     integer: bool = False,
-    **assumptions: Any
+    **assumptions: Any,
 ) -> Union[Symbol, tuple[Symbol, ...]]: ...
 def cos(x: Union[Expr, float, int]) -> Expr:
     """Cosine function."""
@@ -51,6 +61,18 @@ def cos(x: Union[Expr, float, int]) -> Expr:
 
 def sin(x: Union[Expr, float, int]) -> Expr:
     """Sine function."""
+    ...
+
+def sqrt(x: Union[Expr, float, int]) -> Expr:
+    """Square root function."""
+    ...
+
+def Min(*args: Union[Expr, float, int]) -> Expr:
+    """Minimum of multiple expressions."""
+    ...
+
+def Max(*args: Union[Expr, float, int]) -> Expr:
+    """Maximum of multiple expressions."""
     ...
 
 def simplify(expr: Expr) -> Expr:
@@ -69,7 +91,7 @@ def lambdify(
     args: Union[Symbol, Sequence[Symbol]],
     expr: Union[Expr, Sequence[Expr]],
     modules: Union[str, list[str], None] = None,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> Callable[..., Any]:
     """Convert a SymPy expression to a numerical function."""
     ...
@@ -85,5 +107,5 @@ def nsolve(
     x0: Union[list[float], dict[Symbol, float]],
     *,
     dict: bool = False,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> Union[dict[Symbol, float], list[float], float]: ...

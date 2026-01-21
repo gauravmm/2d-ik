@@ -2,6 +2,7 @@
 """Simple test for symbolic IK solver."""
 
 import math
+from typing import List
 from datamodel import DesiredPosition, RobotModel, RobotPosition, RobotState
 from symbolic import IKSymbolic
 
@@ -23,7 +24,7 @@ def test_simple_two_link():
 
     # Target position: (1.5, 0.5) - should be reachable
     target = (1.5, 0.5)
-    state = RobotState(model, initial_position, DesiredPosition())
+    state = RobotState(model, initial_position)
 
     # Solve IK
     print(f"Target position: {target}")
@@ -69,7 +70,7 @@ def test_three_link_robot():
 
     # Target position
     target = (1.8, 0.8)
-    state = RobotState(model, initial_position, DesiredPosition())
+    state = RobotState(model, initial_position)
 
     # Solve IK
     print(f"Target position: {target}")
@@ -115,7 +116,7 @@ def test_unreachable_target():
 
     # Target position: (3.0, 0.0) - outside max reach of 2.0
     target = (3.0, 0.0)
-    state = RobotState(model, initial_position, DesiredPosition())
+    state = RobotState(model, initial_position)
 
     # Solve IK
     print(f"Target position: {target}")
@@ -151,7 +152,7 @@ def test_unreachable_target():
 
 
 if __name__ == "__main__":
-    test_results = []
+    test_results : List[bool] = []
     test_results.append(test_simple_two_link())
     test_results.append(test_three_link_robot())
     test_results.append(test_unreachable_target())

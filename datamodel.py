@@ -1,8 +1,12 @@
 #!python3
 
-from dataclasses import dataclass, field
 import math
-from typing import List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Collection, List, Optional, Tuple
+
+#
+# Robot Model
+#
 
 
 @dataclass(frozen=True)
@@ -66,8 +70,76 @@ class RobotPosition:
 
 @dataclass(frozen=True)
 class DesiredPosition:
-    ee_position: Optional[Position] = None
+    ee_position: Position
     ee_angle: Optional[float] = None
+
+
+#
+# World Model
+#
+
+
+# These regions are used to limit the robot's access. These must all be convex and have a closed-form computation.
+# Each Region returns a residual error, where positive numbers indicate the point lies inside the region and negative
+# numbers indicate the point is outside the region.
+@dataclass(frozen=True)
+class RegionHalfspace:
+    """Halfspace region defined by: normal · (point - anchor) >= 0
+
+    Points inside the halfspace satisfy the inequality.
+    The normal vector points toward the interior of the halfspace.
+    """
+
+    normal: Tuple[float, float]  # Normal vector pointing inward
+    anchor: Tuple[float, float]  # Point on the boundary plane
+
+
+@dataclass(frozen=True)
+class RegionBall:
+    """Ball (circle) region defined by points within radius r from center.
+
+    Points inside the ball satisfy: ||point - center|| <= radius
+    """
+
+    center: Tuple[float, float]  # Center of the ball
+    radius: float  # Radius of the ball
+
+
+@dataclass(frozen=True)
+class RegionRectangle:
+    """Axis-aligned rectangle region defined by left, right, bottom, and top boundaries.
+
+    Points inside the rectangle satisfy: left <= x <= right and bottom <= y <= top
+    """
+
+    left: float  # Left boundary (minimum x)
+    right: float  # Right boundary (maximum x)
+    bottom: float  # Bottom boundary (minimum y)
+    top: float  # Top boundary (maximum y)
+
+    def __post_init__(self):
+        """Validate that boundaries are correctly ordered."""
+        if self.left >= self.right:
+            raise ValueError(
+                f"left ({self.left}) must be less than right ({self.right})"
+            )
+        if self.bottom >= self.top:
+            raise ValueError(
+                f"bottom ({self.bottom}) must be less than top ({self.top})"
+            )
+
+
+Region = RegionHalfspace | RegionBall | RegionRectangle
+
+
+@dataclass(frozen=True)
+class WorldModel:
+    nogo: Collection[Region] = field(default=tuple())
+
+
+#
+# Overall state
+#
 
 
 @dataclass(frozen=True)
@@ -76,7 +148,8 @@ class RobotState:
 
     model: RobotModel
     current: RobotPosition
-    desired: DesiredPosition
+    world: WorldModel = field(default=WorldModel())
+    desired: Optional[DesiredPosition] = field(default=None)
 
     def get_joint_positions(self) -> List[Position]:
         """Convenience method to calculate joint positions using forward kinematics.
@@ -85,3 +158,13 @@ class RobotState:
             A list of (x, y) tuples representing the position of each joint.
         """
         return self.model.forward_kinematics(self.current)
+
+    def with_position(
+        self, position: RobotPosition, desired: DesiredPosition | None = None
+    ):
+        return RobotState(
+            self.model,
+            current=position,
+            world=self.world,
+            desired=desired or self.desired or None,
+        )

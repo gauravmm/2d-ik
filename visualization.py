@@ -1,11 +1,21 @@
 from matplotlib import artist
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle
+from matplotlib.patches import Circle, Rectangle, Polygon
 from matplotlib.lines import Line2D
 from matplotlib.backend_bases import MouseEvent, MouseButton, Event
 import matplotlib.animation as animation
-from datamodel import DesiredPosition, RobotModel, RobotPosition, RobotState
+from datamodel import (
+    DesiredPosition,
+    RegionBall,
+    RegionHalfspace,
+    RegionRectangle,
+    RobotModel,
+    RobotPosition,
+    RobotState,
+    WorldModel,
+)
 from typing import Callable, List, Literal, Optional, Sequence
+import numpy as np
 import logging
 
 logger = logging.getLogger(__name__)
@@ -56,6 +66,7 @@ class RobotVisualizer:
         self.link_lines: list[Line2D] = []
         self.joint_circles: list[Circle] = []
         self.end_effector_circle: Optional[Circle] = None
+        self.world_region_patches: list[artist.Artist] = []
 
         # Set up click event handling
         if self.click_callback:
@@ -68,8 +79,92 @@ class RobotVisualizer:
         self._update_view_limits()
         self.update(self.robot_state)
 
+    def _clear_world_regions(self):
+        """Remove all existing world region patches from the plot."""
+        for patch in self.world_region_patches:
+            patch.remove()
+        self.world_region_patches.clear()
+
+    def _render_world_regions(self):
+        """Render the nogo regions from the WorldModel as pink shapes."""
+        # Clear existing world region patches first
+        self._clear_world_regions()
+
+        world = self.robot_state.world
+        if not world.nogo:
+            return
+
+        # Get the view bounds for rendering halfspaces
+        max_reach = sum(self.robot_state.model.link_lengths)
+        bound = max_reach * self.scale_margin * 2
+
+        for region in world.nogo:
+            if isinstance(region, RegionBall):
+                # Render as a filled circle
+                circle = Circle(
+                    region.center,
+                    region.radius,
+                    color="pink",
+                    fill=True,
+                    alpha=0.7,
+                    zorder=0,
+                )
+                self.ax.add_patch(circle)
+                self.world_region_patches.append(circle)
+
+            elif isinstance(region, RegionRectangle):
+                # Render as a filled rectangle
+                rect = Rectangle(
+                    (region.left, region.bottom),
+                    region.right - region.left,
+                    region.top - region.bottom,
+                    color="pink",
+                    fill=True,
+                    alpha=0.7,
+                    zorder=0,
+                )
+                self.ax.add_patch(rect)
+                self.world_region_patches.append(rect)
+
+            elif isinstance(region, RegionHalfspace):
+                # Render as a large polygon covering the halfspace
+                # The halfspace is defined as: normal · (point - anchor) >= 0
+                # Points satisfying this are "inside" the halfspace (the nogo region)
+                nx, ny = region.normal
+                ax, ay = region.anchor
+
+                # Normalize the normal vector
+                norm_len = np.sqrt(nx * nx + ny * ny)
+                if norm_len < 1e-10:
+                    continue
+                nx, ny = nx / norm_len, ny / norm_len
+
+                # Direction along the boundary (perpendicular to normal)
+                tx, ty = -ny, nx
+
+                # Create a large polygon representing the halfspace
+                # Start from anchor and extend in both directions along boundary
+                # Then extend "into" the halfspace (in the direction of the normal)
+                p1 = (ax - tx * bound, ay - ty * bound)
+                p2 = (ax + tx * bound, ay + ty * bound)
+                p3 = (ax + tx * bound + nx * bound, ay + ty * bound + ny * bound)
+                p4 = (ax - tx * bound + nx * bound, ay - ty * bound + ny * bound)
+
+                poly = Polygon(
+                    [p1, p2, p3, p4],
+                    color="pink",
+                    fill=True,
+                    alpha=0.7,
+                    zorder=0,
+                )
+                self.ax.add_patch(poly)
+                self.world_region_patches.append(poly)
+
     def _setup_plot_elements(self):
         """Create the plot elements for links and joints."""
+        # Render world regions first (so they appear behind the robot)
+        self._render_world_regions()
+
         num_links = len(self.robot_state.model.link_lengths)
 
         # Create link lines
@@ -130,7 +225,12 @@ class RobotVisualizer:
         Args:
             robot_state: New RobotState to display
         """
+        # Check if world model has changed and re-render regions if needed
+        old_world = self.robot_state.world
         self.robot_state = robot_state
+
+        if robot_state.world is not old_world:
+            self._render_world_regions()
 
         # Get joint positions
         positions = robot_state.get_joint_positions()
@@ -146,7 +246,10 @@ class RobotVisualizer:
 
         # Update end effector
         if self.end_effector_circle:
-            if robot_state.desired.ee_position is not None:
+            if (
+                robot_state.desired is not None
+                and robot_state.desired.ee_position is not None
+            ):
                 self.end_effector_circle.center = robot_state.desired.ee_position
             else:
                 self.end_effector_circle.center = (999.0, 999.0)
@@ -214,7 +317,16 @@ if __name__ == "__main__":
 
     # Initial position
     position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
-    state = RobotState(model, position, DesiredPosition(ee_position=(0, 0)))
+    nogo = [
+        RegionHalfspace((0, -1), (0, -0.2)),
+        RegionRectangle(0.5, 10.0, -10.0, 1.0),
+        RegionRectangle(0.5, 10.0, 1.6, 5.0),
+    ]
+    world = WorldModel(nogo=nogo)
+
+    state = RobotState(
+        model, position, world=world, desired=DesiredPosition(ee_position=(0, 0))
+    )
 
     # Click handler
     def on_click(x, y, btn):
@@ -240,7 +352,9 @@ if __name__ == "__main__":
         return RobotState(
             model,
             position,
-            DesiredPosition(ee_position=(math.sin(frame * 0.04), math.cos(frame * 0.04)))
+            desired=DesiredPosition(
+                ee_position=(math.sin(frame * 0.04), math.cos(frame * 0.04))
+            ),
         )
 
     # Run animation
