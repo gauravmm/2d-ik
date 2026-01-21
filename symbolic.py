@@ -264,6 +264,19 @@ class IKSymbolic:
         self.n_joints = len(model.link_lengths)
         self.collision_geometry = collision_geometry
 
+        # Process joint limits from model
+        # joint_limits is a tuple of (min, max) or None for each joint
+        self.joint_bounds: list[tuple[float, float] | None] = []
+        if model.joint_limits:
+            for i, limit in enumerate(model.joint_limits):
+                if limit is not None:
+                    self.joint_bounds.append((limit[0], limit[1]))
+                else:
+                    self.joint_bounds.append(None)
+        # Pad with None if joint_limits is shorter than number of joints
+        while len(self.joint_bounds) < self.n_joints:
+            self.joint_bounds.append(None)
+
         # Create symbolic variables for joint angles
         thetas = sp.symbols(f"theta0:{self.n_joints}", real=True, seq=True)
         assert isinstance(thetas, tuple)
@@ -457,8 +470,15 @@ class IKSymbolic:
             else:
                 return [grad_result]
 
-        # Minimize distance to target using BFGS with analytical gradient
-        result = minimize(objective, x0, method="BFGS", jac=gradient)
+        # Build bounds for L-BFGS-B optimizer
+        # Convert None to (-inf, inf) for unconstrained joints
+        bounds = [
+            (b[0], b[1]) if b is not None else (None, None)
+            for b in self.joint_bounds
+        ]
+
+        # Minimize distance to target using L-BFGS-B with analytical gradient and bounds
+        result = minimize(objective, x0, method="L-BFGS-B", jac=gradient, bounds=bounds)
 
         # Extract joint angles from solution
         joint_angles = tuple(float(angle) for angle in result.x)
@@ -475,14 +495,17 @@ if __name__ == "__main__":
     from visualization import RobotVisualizer
 
     # Create a 3-link robot
-    model = RobotModel(link_lengths=(1.0, 0.8, 0.6))
+    model = RobotModel(
+        link_lengths=(1.0, 0.8, 0.6),
+        joint_limits=((0.4 * math.pi, math.pi), None, None),
+    )
     # Create a world with a narrow space to enter.
     nogo = [
         RegionHalfspace((0, -1), (0, -0.2)),
         RegionRectangle(0.5, 10.0, -10.0, 1.0),
         RegionRectangle(0.5, 10.0, 1.6, 5.0),
     ]
-    world = WorldModel(nogo=None)
+    world = WorldModel()
 
     # Create the IK solver
     ik_solver = IKSymbolic(model, world=world, collision_geometry="point")
