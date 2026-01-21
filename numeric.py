@@ -227,10 +227,12 @@ class IKNumeric:
         lr: float = 0.02,
         max_iterations: int = 500,
         tolerance: float = 1e-6,
+        collision_geometry: Literal["line", "point"] = "line",
     ) -> None:
         self.model = model
         self.nogo = world and world.nogo
         self.n_joints = len(model.link_lengths)
+        self.collision_geometry = collision_geometry
 
         # Optimization parameters
         self.lr = lr
@@ -296,15 +298,27 @@ class IKNumeric:
         if self.numeric_regions:
             nogo_penalty = torch.tensor(0.0, dtype=torch.float64)
 
-            # For each link segment
-            for i in range(len(joint_positions) - 1):
-                p1 = joint_positions[i]
-                p2 = joint_positions[i + 1]
+            if self.collision_geometry == "line":
+                # For each link segment
+                for i in range(len(joint_positions) - 1):
+                    p1 = joint_positions[i]
+                    p2 = joint_positions[i + 1]
 
-                # Check each nogo region
-                for numeric_region in self.numeric_regions:
-                    segment_penalty = numeric_region.line(p1, p2)
-                    nogo_penalty = nogo_penalty + segment_penalty**2
+                    # Check each nogo region
+                    for numeric_region in self.numeric_regions:
+                        segment_penalty = numeric_region.line(p1, p2)
+                        nogo_penalty = nogo_penalty + segment_penalty**2
+            else:  # point
+                # Only check joint positions (excluding origin at index 0)
+                for i in range(1, len(joint_positions)):
+                    p = joint_positions[i]
+
+                    # Check each nogo region
+                    for numeric_region in self.numeric_regions:
+                        point_penalty = numeric_region.point(p)
+                        # Clamp to only penalize when inside the region (positive values)
+                        point_penalty = torch.clamp(point_penalty, min=0.0)
+                        nogo_penalty = nogo_penalty + point_penalty**2
 
             objective = objective + nogo_weight * nogo_penalty
 
@@ -333,15 +347,23 @@ class IKNumeric:
             angle_weight = 0.0
 
         # Nogo weight
-        nogo_weight = 1.0e4 if self.numeric_regions else 0.0
+        nogo_weight = 1.0e3 if self.numeric_regions else 0.0
 
         # Initialize joint angles from current state
         thetas = torch.tensor(
             list(state.current.joint_angles), dtype=torch.float64, requires_grad=True
         )
 
-        # Use Adam optimizer
-        optimizer = torch.optim.Adam([thetas], lr=self.lr)
+        # Use Adam optimizer with learning rate annealing
+        start_lr = 0.05
+        end_lr = 0.02
+        optimizer = torch.optim.Adam([thetas], lr=start_lr)
+        scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer,
+            start_factor=1.0,
+            end_factor=end_lr / start_lr,
+            total_iters=self.max_iterations,
+        )
 
         prev_loss = float("inf")
         for iteration in range(self.max_iterations):
@@ -353,6 +375,7 @@ class IKNumeric:
 
             loss.backward()
             optimizer.step()
+            scheduler.step()
 
             # Check convergence
             current_loss = loss.item()
@@ -375,7 +398,7 @@ if __name__ == "__main__":
     from visualization import RobotVisualizer
 
     # Create a 3-link robot
-    model = RobotModel(link_lengths=(1.0, 0.8, 0.6))
+    model = RobotModel(link_lengths=(1.0, 1.0, 0.6))
     # Create a world with a narrow space to enter.
     nogo = [
         RegionHalfspace((0, -1), (0, -0.2)),
@@ -385,7 +408,7 @@ if __name__ == "__main__":
     world = WorldModel(nogo=nogo)
 
     # Create the IK solver
-    ik_solver = IKNumeric(model, world=world)
+    ik_solver = IKNumeric(model, world=world, collision_geometry="line")
 
     # Initial position
     initial_position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))

@@ -251,12 +251,18 @@ def make_symbolic_region(region: Region):
 class IKSymbolic:
     """Implements a symbolic solver for inverse kinematics using the Sympy solver."""
 
-    def __init__(self, model: RobotModel, world: WorldModel | None) -> None:
+    def __init__(
+        self,
+        model: RobotModel,
+        world: WorldModel | None,
+        collision_geometry: Literal["line", "point"] = "line",
+    ) -> None:
         # Create variables for each joint rotation and set up a system of equations that
         # relate each end effector position
         self.model = model
         self.nogo = world and world.nogo
         self.n_joints = len(model.link_lengths)
+        self.collision_geometry = collision_geometry
 
         # Create symbolic variables for joint angles
         thetas = sp.symbols(f"theta0:{self.n_joints}", real=True, seq=True)
@@ -323,6 +329,10 @@ class IKSymbolic:
 
         # Add nogo zone penalty for each link
         if self.nogo:
+            print(
+                "ERROR: nogo zones are not supported by the IKSymbolic solver due to slowdown in the simplify steps."
+            )
+            raise NotImplementedError()
             nogo_weight = sp.Symbol("nogo_weight", real=True, positive=True)
             nogo_penalty: sp.Expr = sp.Float(0)
 
@@ -333,18 +343,32 @@ class IKSymbolic:
             for jx, jy in zip(joint_x_syms, joint_y_syms):
                 joint_positions.append((jx, jy))
 
-            # For each link (segment between consecutive joints)
-            for i in range(len(joint_positions) - 1):
-                p1 = joint_positions[i]
-                p2 = joint_positions[i + 1]
+            if self.collision_geometry == "line":
+                # For each link (segment between consecutive joints)
+                for i in range(len(joint_positions) - 1):
+                    p1 = joint_positions[i]
+                    p2 = joint_positions[i + 1]
 
-                # Check each nogo region
-                for region in self.nogo:
-                    # Use symbolic region helper to get penalty for this segment
-                    symbolic_region = make_symbolic_region(region)
-                    segment_penalty = symbolic_region.line(p1, p2)
-                    # Square the penalty to make it smooth and differentiable
-                    nogo_penalty = nogo_penalty + segment_penalty**2
+                    # Check each nogo region
+                    for region in self.nogo:
+                        # Use symbolic region helper to get penalty for this segment
+                        symbolic_region = make_symbolic_region(region)
+                        segment_penalty = symbolic_region.line(p1, p2)
+                        # Square the penalty to make it smooth and differentiable
+                        nogo_penalty = nogo_penalty + segment_penalty**2
+            else:  # point
+                # Only check joint positions (excluding origin at index 0)
+                for i in range(1, len(joint_positions)):
+                    p = joint_positions[i]
+
+                    # Check each nogo region
+                    for region in self.nogo:
+                        symbolic_region = make_symbolic_region(region)
+                        point_penalty = symbolic_region.point(p)
+                        # Use Max to only penalize when inside the region (positive values)
+                        point_penalty = sp.Max(point_penalty, 0.0)
+                        # Square the penalty to make it smooth and differentiable
+                        nogo_penalty = nogo_penalty + point_penalty**2
 
             combined_objective = combined_objective + nogo_weight * nogo_penalty
             self.nogo_weight_symbol = nogo_weight
@@ -353,7 +377,7 @@ class IKSymbolic:
 
         # Compute the gradient (derivative with respect to each joint angle)
         gradient = [sp.diff(combined_objective, theta) for theta in self.theta_symbols]
-        gradient_simplified = [sp.simplify(g) for g in gradient]
+        # gradient_simplified = [sp.simplify(g) for g in gradient]
 
         # Convert to numerical functions
         # Build parameter list: (target_x, target_y, target_angle, angle_weight, [nogo_weight], theta0, theta1, ...)
@@ -369,7 +393,7 @@ class IKSymbolic:
 
         self.combined_gradient_func = sp.lambdify(
             base_params + list(self.theta_symbols),
-            gradient_simplified,
+            gradient,
             "numpy",
         )
 
@@ -392,7 +416,7 @@ class IKSymbolic:
         # Known bug:
         if state.world.nogo:
             print(
-                "WARNING: nogo zones are not supported by the IKSymbolic solver due to slowdown in the simplify steps."
+                "ERROR: nogo zones are not supported by the IKSymbolic solver due to slowdown in the simplify steps."
             )
 
         # Get the desired end effector position
@@ -461,7 +485,7 @@ if __name__ == "__main__":
     world = WorldModel(nogo=nogo)
 
     # Create the IK solver
-    ik_solver = IKSymbolic(model, world=world)
+    ik_solver = IKSymbolic(model, world=world, collision_geometry="point")
 
     # Initial position
     initial_position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
