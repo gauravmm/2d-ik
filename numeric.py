@@ -1,5 +1,7 @@
 #!python3
 
+import time
+from dataclasses import dataclass
 from typing import Literal, Optional, Tuple
 
 import torch
@@ -217,6 +219,18 @@ def make_numeric_region(region: Region):
         raise TypeError(f"Unknown region type: {type(region)}")
 
 
+@dataclass
+class IKNumericProfile:
+    """Profiling results from IKNumeric solver."""
+
+    solve_time_ms: float  # Total solve time in milliseconds
+    iterations: int  # Number of optimization iterations
+    converged: bool  # Whether the solver converged before max_iterations
+    initial_loss: float  # Loss at the start of optimization
+    final_loss: float  # Loss at the end of optimization
+    position_error: float  # Final Euclidean distance to target position
+
+
 class IKNumeric:
     """Implements a numerical solver for inverse kinematics using PyTorch autodiff."""
 
@@ -328,8 +342,19 @@ class IKNumeric:
         self,
         state: RobotState,
         desired: DesiredPosition,
-    ) -> RobotState:
-        """Solve IK for the desired position."""
+        profile: bool = False,
+    ) -> RobotState | Tuple[RobotState, IKNumericProfile]:
+        """Solve IK for the desired position.
+
+        Args:
+            state: Current robot state.
+            desired: Desired end effector position and optional angle.
+            profile: If True, return profiling information along with the result.
+
+        Returns:
+            If profile is False: RobotState with the solution.
+            If profile is True: Tuple of (RobotState, IKNumericProfile).
+        """
         if state.model != self.model:
             raise ValueError("State model does not match IKNumeric model")
 
@@ -347,7 +372,7 @@ class IKNumeric:
             angle_weight = 0.0
 
         # Nogo weight
-        nogo_weight = 1.0e3 if self.numeric_regions else 0.0
+        nogo_weight = 1.0e2 if self.numeric_regions else 0.0
 
         # Initialize joint angles from current state
         thetas = torch.tensor(
@@ -355,8 +380,8 @@ class IKNumeric:
         )
 
         # Use Adam optimizer with learning rate annealing
-        start_lr = 0.05
-        end_lr = 0.02
+        start_lr = 0.1
+        end_lr = 0.04
         optimizer = torch.optim.Adam([thetas], lr=start_lr)
         scheduler = torch.optim.lr_scheduler.LinearLR(
             optimizer,
@@ -365,7 +390,15 @@ class IKNumeric:
             total_iters=self.max_iterations,
         )
 
+        # Start profiling
+        start_time = time.perf_counter()
+
         prev_loss = float("inf")
+        current_loss = float("inf")
+        initial_loss: Optional[float] = None
+        converged = False
+        iterations_completed = 0
+
         for iteration in range(self.max_iterations):
             optimizer.zero_grad()
 
@@ -373,22 +406,53 @@ class IKNumeric:
                 thetas, target_x, target_y, target_angle, angle_weight, nogo_weight
             )
 
+            # Record initial loss
+            if initial_loss is None:
+                initial_loss = loss.item()
+
             loss.backward()
             optimizer.step()
             scheduler.step()
 
+            iterations_completed = iteration + 1
+
             # Check convergence
             current_loss = loss.item()
             if abs(prev_loss - current_loss) < self.tolerance:
+                converged = True
                 break
             prev_loss = current_loss
+
+        # End profiling
+        end_time = time.perf_counter()
+        final_loss = current_loss
 
         # Extract solution
         joint_angles = tuple(float(angle) for angle in thetas.detach().numpy())
 
-        return state.with_position(
+        result_state = state.with_position(
             RobotPosition(joint_angles=joint_angles), desired=desired
         )
+
+        if profile:
+            # Compute final position error
+            with torch.no_grad():
+                ee_x, ee_y, _, _ = self._forward_kinematics(thetas)
+                position_error = float(
+                    torch.sqrt((ee_x - target_x) ** 2 + (ee_y - target_y) ** 2)
+                )
+
+            profile_result = IKNumericProfile(
+                solve_time_ms=(end_time - start_time) * 1000,
+                iterations=iterations_completed,
+                converged=converged,
+                initial_loss=initial_loss if initial_loss is not None else 0.0,
+                final_loss=final_loss,
+                position_error=position_error,
+            )
+            return result_state, profile_result
+
+        return result_state
 
 
 if __name__ == "__main__":
@@ -428,20 +492,23 @@ if __name__ == "__main__":
         if btn == "right":
             new_ee_angle = 0.0 if new_ee_angle is None else None
 
-        # Solve IK
+        # Solve IK with profiling
         try:
-            solution_state = ik_solver(
+            result = ik_solver(
                 current_state,
                 DesiredPosition(ee_position=(x, y), ee_angle=new_ee_angle),
+                profile=True,
             )
+            assert isinstance(result, tuple)
+            solution_state, profile = result
             solution = solution_state.current
             print(f"Solution: {tuple(f'{a:.3f}' for a in solution.joint_angles)}")
 
-            # Verify the solution
-            end_effector_positions = model.forward_kinematics(solution)
-            end_effector = end_effector_positions[-1]
-            error = math.sqrt((end_effector[0] - x) ** 2 + (end_effector[1] - y) ** 2)
-            print(f"Position error: {error:.6f}")
+            # Print profiling information
+            print(f"Solve time: {profile.solve_time_ms:.2f}ms")
+            print(f"Iterations: {profile.iterations} (converged: {profile.converged})")
+            print(f"Loss: {profile.initial_loss:.6f} -> {profile.final_loss:.6f}")
+            print(f"Position error: {profile.position_error:.6f}")
 
             # Update the visualization with the new solution
             current_state = solution_state
