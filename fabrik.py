@@ -232,6 +232,19 @@ class IKFabrik:
         self.link_lengths = np.array(model.link_lengths, dtype=np.float64)
         self.joint_origins = np.array(model.joint_origins, dtype=np.float64)
 
+        # Process joint limits from model
+        # joint_limits is a tuple of (min, max) or None for each joint
+        self.joint_bounds: list[tuple[float, float] | None] = []
+        if model.joint_limits:
+            for limit in model.joint_limits:
+                if limit is not None:
+                    self.joint_bounds.append((limit[0], limit[1]))
+                else:
+                    self.joint_bounds.append(None)
+        # Pad with None if joint_limits is shorter than number of joints
+        while len(self.joint_bounds) < self.n_joints:
+            self.joint_bounds.append(None)
+
         # Total reach of the robot
         self.total_reach = float(np.sum(self.link_lengths))
 
@@ -290,6 +303,47 @@ class IKFabrik:
             cumulative_angle = link_angle
 
         return angles
+
+    def _clamp_joint_angles(self, angles: np.ndarray) -> np.ndarray:
+        """Clamp joint angles to their limits.
+
+        Args:
+            angles: Joint angles as (n_joints,) array.
+
+        Returns:
+            Clamped joint angles as (n_joints,) array.
+        """
+        clamped = angles.copy()
+        for i, bound in enumerate(self.joint_bounds):
+            if bound is not None:
+                clamped[i] = np.clip(clamped[i], bound[0], bound[1])
+        return clamped
+
+    def _apply_joint_limits(self, positions: np.ndarray) -> np.ndarray:
+        """Apply joint limits by converting to angles, clamping, and converting back.
+
+        Args:
+            positions: Joint positions as (n_joints + 1, 2) array.
+
+        Returns:
+            Updated joint positions with joint limits enforced.
+        """
+        # Check if any joint limits are defined
+        if not any(b is not None for b in self.joint_bounds):
+            return positions
+
+        # Convert positions to angles
+        angles = self._positions_to_angles(positions)
+
+        # Clamp angles to limits
+        clamped_angles = self._clamp_joint_angles(angles)
+
+        # If no changes, return original positions
+        if np.allclose(angles, clamped_angles):
+            return positions
+
+        # Convert back to positions
+        return self._forward_kinematics(clamped_angles)
 
     def _project_point_from_regions(self, point: np.ndarray) -> np.ndarray:
         """Project a point outside all nogo regions.
@@ -475,6 +529,9 @@ class IKFabrik:
 
             positions[i + 1] = candidate
 
+        # Apply joint limits after forward pass
+        positions = self._apply_joint_limits(positions)
+
         return positions
 
     def _apply_angle_constraint(
@@ -600,8 +657,15 @@ if __name__ == "__main__":
     # Interactive IK solver demo using RobotVisualizer
     from visualization import RobotVisualizer
 
-    # Create a 3-link robot
-    model = RobotModel(link_lengths=(1.0, 0.8, 0.6))
+    # Create a 3-link robot with joint limits
+    model = RobotModel(
+        link_lengths=(1.0, 0.8, 0.6),
+        joint_limits=(
+            (0.4 * math.pi, math.pi),
+            (-math.pi, 0),
+            (-math.pi / 2, math.pi / 2),
+        ),
+    )
 
     # Create a world with nogo regions
     nogo = [
@@ -616,8 +680,8 @@ if __name__ == "__main__":
         model, world=world, max_iterations=100, collision_geometry="line"
     )
 
-    # Initial position
-    initial_position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
+    # Initial position (within joint limits)
+    initial_position = RobotPosition(joint_angles=(0.5 * math.pi, -math.pi / 4, 0.0))
     current_state = RobotState(model, current=initial_position, world=world)
 
     # Create visualizer
