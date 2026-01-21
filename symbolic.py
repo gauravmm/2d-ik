@@ -482,13 +482,15 @@ if __name__ == "__main__":
         RegionRectangle(0.5, 10.0, -10.0, 1.0),
         RegionRectangle(0.5, 10.0, 1.6, 5.0),
     ]
-    world = WorldModel(nogo=nogo)
+    world = WorldModel(nogo=None)
 
     # Create the IK solver
     ik_solver = IKSymbolic(model, world=world, collision_geometry="point")
 
     # Initial position
-    initial_position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
+    initial_position = RobotPosition(
+        joint_angles=(2.5 * math.pi / 4, -math.pi + 0.1, math.pi - 0.1)
+    )
     global current_state
     current_state = RobotState(model, current=initial_position, world=world)
 
