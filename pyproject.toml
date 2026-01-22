@@ -5,6 +5,7 @@ description = "2D Inverse Kinematics for 3D printer bed unloader robot"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "jax>=0.9.0",
     "matplotlib>=3.10.8",
     "mypy>=1.19.1",
     "pytest>=9.0.2",

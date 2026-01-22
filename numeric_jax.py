@@ -171,7 +171,6 @@ def _compute_objective(
     target_angle: float,
     angle_weight: float,
     nogo_weight: float,
-    joint_limit_weight: float,
     nogo_params: Optional[NogoRegionParams],
 ) -> Array:
     """Compute the IK objective function."""
@@ -188,12 +187,6 @@ def _compute_objective(
     angle_error_squared = angle_error**2
 
     objective = distance_squared + angle_weight * angle_error_squared
-
-    # Joint limit penalty (always computed, weight of 0 disables it)
-    below_min = jnp.maximum(robot_params.joint_min - thetas, 0.0)
-    above_max = jnp.maximum(thetas - robot_params.joint_max, 0.0)
-    joint_limit_penalty = jnp.sum(below_min**2 + above_max**2)
-    objective = objective + joint_limit_weight * joint_limit_penalty
 
     # Nogo penalty (always computed if nogo_params provided, weight of 0 disables it)
     # Note: nogo_params is None vs not-None is a static condition handled by has_nogo flag
@@ -212,7 +205,6 @@ def _optimization_step(
     target_angle: float,
     angle_weight: float,
     nogo_weight: float,
-    joint_limit_weight: float,
     nogo_params: Optional[NogoRegionParams],
     lr: float,
     momentum: float,
@@ -228,13 +220,15 @@ def _optimization_step(
         target_angle,
         angle_weight,
         nogo_weight,
-        joint_limit_weight,
         nogo_params,
     )
 
     # Update with momentum
     new_velocity = momentum * state.velocity - lr * grad
     new_thetas = state.thetas + new_velocity
+
+    # Clamp joint angles to limits
+    new_thetas = jnp.clip(new_thetas, robot_params.joint_min, robot_params.joint_max)
 
     # Check convergence
     converged = jnp.abs(state.prev_loss - loss) < tolerance
@@ -257,7 +251,6 @@ def _solve_ik_jit(
     target_angle: float,
     angle_weight: float,
     nogo_weight: float,
-    joint_limit_weight: float,
     nogo_params: Optional[NogoRegionParams],
     lr: float,
     momentum: float,
@@ -274,7 +267,6 @@ def _solve_ik_jit(
         target_angle: Target end effector angle.
         angle_weight: Weight for angle constraint.
         nogo_weight: Weight for nogo zone penalty.
-        joint_limit_weight: Weight for joint limit penalty.
         nogo_params: Nogo region parameters (or None).
         lr: Learning rate.
         momentum: Momentum coefficient.
@@ -287,6 +279,11 @@ def _solve_ik_jit(
     """
     # Use nogo_params only if has_nogo is True
     effective_nogo_params = nogo_params if has_nogo else None
+
+    # Clamp initial thetas to joint limits
+    initial_thetas = jnp.clip(
+        initial_thetas, robot_params.joint_min, robot_params.joint_max
+    )
 
     # Initial state
     init_state = SolverState(
@@ -307,7 +304,6 @@ def _solve_ik_jit(
             target_angle,
             angle_weight,
             nogo_weight,
-            joint_limit_weight,
             effective_nogo_params,
             lr,
             momentum,
@@ -485,10 +481,6 @@ class IKNumericJAX:
 
         # Weights
         nogo_weight = 1.0e2 if self.has_nogo else 0.0
-        has_limits = jnp.any(jnp.isfinite(self.robot_params.joint_min)) or jnp.any(
-            jnp.isfinite(self.robot_params.joint_max)
-        )
-        joint_limit_weight = 1.0e3 if has_limits else 0.0
 
         # Initial angles
         initial_thetas = jnp.array(state.current.joint_angles, dtype=jnp.float32)
@@ -504,7 +496,6 @@ class IKNumericJAX:
                     target_angle,
                     angle_weight,
                     nogo_weight,
-                    joint_limit_weight,
                     self.nogo_params if self.has_nogo else None,
                 )
             )
@@ -521,7 +512,6 @@ class IKNumericJAX:
             target_angle,
             angle_weight,
             nogo_weight,
-            joint_limit_weight,
             self.nogo_params,
             self.lr,
             self.momentum,
@@ -585,15 +575,15 @@ if __name__ == "__main__":
         RegionRectangle(0.5, 10.0, -10.0, 1.0),
         RegionRectangle(0.5, 10.0, 1.6, 5.0),
     ]
-    world = WorldModel(nogo=nogo)
+    world = WorldModel()
 
     # Create the IK solver
     ik_solver = IKNumericJAX(
         model,
         world=world,
         collision_geometry="point",
-        max_iterations=500,
-        lr=0.05,
+        max_iterations=200,
+        lr=0.01,
         momentum=0.9,
     )
 

@@ -338,14 +338,10 @@ class IKSymbolic:
         # When angle_weight = 0, this reduces to position-only optimization
         combined_objective = distance_squared + angle_weight * angle_error_squared
         # Simplify the combined objective function
-        combined_objective = sp.simplify(combined_objective)
+        # combined_objective = sp.simplify(combined_objective)
 
         # Add nogo zone penalty for each link
         if self.nogo:
-            print(
-                "ERROR: nogo zones are not supported by the IKSymbolic solver due to slowdown in the simplify steps."
-            )
-            raise NotImplementedError()
             nogo_weight = sp.Symbol("nogo_weight", real=True, positive=True)
             nogo_penalty: sp.Expr = sp.Float(0)
 
@@ -508,7 +504,7 @@ if __name__ == "__main__":
         RegionRectangle(0.5, 10.0, -10.0, 1.0),
         RegionRectangle(0.5, 10.0, 1.6, 5.0),
     ]
-    world = WorldModel()
+    world = WorldModel(nogo=nogo)
 
     # Create the IK solver
     ik_solver = IKSymbolic(model, world=world, collision_geometry="point")

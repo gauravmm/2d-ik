@@ -8,16 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Environment
 
-This project uses a local venv. Always activate it before running commands:
+This project uses uv. Invoke code uring
 
 ```bash
-source ~/.venv/bin/activate
-```
-
-For running code that imports from the project, set PYTHONPATH:
-
-```bash
-PYTHONPATH=/home/gauravmm/2d-ik python3 <command>
+uv run python ...
 ```
 
 If you change more than a few lines of code, commit all changes you make with a short message.

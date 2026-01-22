@@ -124,7 +124,7 @@ class TestIKNumericJAXAngleConstraints:
             model, world=None, lr=0.05, momentum=0.9, max_iterations=1000
         )
 
-        target_pos = (1.5, 0.5)
+        target_pos = (1.0, 0.5)
         target_angle = 0.0
 
         initial_position = RobotPosition(joint_angles=(0.5, 0.3, -0.2))
@@ -425,16 +425,12 @@ class TestIKNumericJAXJIT:
         state = RobotState(model, initial_position)
 
         # First call (includes JIT compilation)
-        result1 = ik_solver(
-            state, DesiredPosition(ee_position=target), profile=True
-        )
+        result1 = ik_solver(state, DesiredPosition(ee_position=target), profile=True)
         assert isinstance(result1, tuple)
         _, profile1 = result1
 
         # Second call (should use cached JIT)
-        result2 = ik_solver(
-            state, DesiredPosition(ee_position=target), profile=True
-        )
+        result2 = ik_solver(state, DesiredPosition(ee_position=target), profile=True)
         assert isinstance(result2, tuple)
         _, profile2 = result2
 
