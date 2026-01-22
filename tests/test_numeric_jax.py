@@ -200,7 +200,7 @@ class TestIKNumericJAXEdgeCases:
         state = RobotState(TWO_LINK, RobotPosition(joint_angles=(0.0, 0.0)))
 
         with pytest.raises(ValueError, match="ee_position"):
-            ik_solver(state, DesiredPosition(ee_position=None))
+            ik_solver(state, DesiredPosition(ee_position=None))  # pyright: ignore[reportArgumentType]
 
     def test_unreachable_target(self):
         """Test behavior with unreachable target."""

@@ -599,7 +599,7 @@ if __name__ == "__main__":
     model = RobotModel(
         link_lengths=(1.0, 0.8, 0.6),
         joint_limits=(
-            (0.4 * math.pi, math.pi),
+            (0.2 * math.pi, math.pi),
             (-math.pi, 0),
             (-math.pi / 2, math.pi / 2),
         ),
@@ -608,8 +608,8 @@ if __name__ == "__main__":
     # Create a world with nogo zones
     nogo = [
         RegionHalfspace((0, -1), (0, -0.2)),
-        RegionRectangle(0.5, 10.0, -10.0, 1.0),
-        RegionRectangle(0.5, 10.0, 1.6, 5.0),
+        RegionRectangle(0.5, 10.0, -10.0, 0.6),
+        RegionRectangle(0.5, 10.0, 1.2, 5.0),
     ]
     world = WorldModel(nogo=nogo)
 
