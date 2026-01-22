@@ -272,7 +272,7 @@ def _optimization_step(
         velocity=new_velocity,
         iteration=state.iteration + 1,
         prev_loss=loss,
-        converged=converged,
+        converged=converged,  # type: ignore
     )
 
 
@@ -356,7 +356,7 @@ def _solve_ik_jit(
     def loop_cond(state: SolverState) -> bool:
         return jnp.logical_and(
             state.iteration < max_iterations, jnp.logical_not(state.converged)
-        )
+        )  # type: ignore
 
     # Run optimization loop
     final_state = lax.while_loop(loop_cond, loop_body, init_state)
@@ -580,7 +580,7 @@ class IKNumericJAX:
                 solve_time_ms=(end_time - start_time) * 1000,
                 iterations=int(result.iterations),
                 converged=bool(result.converged),
-                initial_loss=initial_loss,
+                initial_loss=initial_loss,  # type: ignore
                 final_loss=float(result.final_loss),
                 position_error=position_error,
             )
