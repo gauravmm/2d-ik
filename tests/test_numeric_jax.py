@@ -155,7 +155,7 @@ class TestIKNumericJAXAngleConstraints:
         """Test reaching same position with different end effector angles."""
         model = three_link_robot
         ik_solver = IKNumericJAX(
-            model, world=None, lr=0.05, momentum=0.9, max_iterations=1000
+            model, world=None, lr=0.01, momentum=0.9, max_iterations=200
         )
 
         target_pos = (1.5, 0.5)

@@ -168,25 +168,16 @@ def _compute_objective(
     robot_params: RobotParams,
     target_x: float,
     target_y: float,
-    target_angle: float,
-    angle_weight: float,
     nogo_weight: float,
     nogo_params: Optional[NogoRegionParams],
 ) -> Array:
     """Compute the IK objective function."""
-    ee_x, ee_y, ee_angle, joint_xs, joint_ys = _forward_kinematics(
+    ee_x, ee_y, _, joint_xs, joint_ys = _forward_kinematics(
         thetas, robot_params.link_lengths, robot_params.joint_origins
     )
 
     # Position error
-    distance_squared = (ee_x - target_x) ** 2 + (ee_y - target_y) ** 2
-
-    # Angle error with wrapping
-    angle_diff = ee_angle - target_angle
-    angle_error = jnp.arctan2(jnp.sin(angle_diff), jnp.cos(angle_diff))
-    angle_error_squared = angle_error**2
-
-    objective = distance_squared + angle_weight * angle_error_squared
+    objective = (ee_x - target_x) ** 2 + (ee_y - target_y) ** 2
 
     # Nogo penalty (always computed if nogo_params provided, weight of 0 disables it)
     # Note: nogo_params is None vs not-None is a static condition handled by has_nogo flag
@@ -197,13 +188,50 @@ def _compute_objective(
     return objective
 
 
+def _set_last_joint_for_angle(
+    thetas: Array,
+    robot_params: RobotParams,
+    target_angle: float,
+) -> Array:
+    """Set the last joint angle to achieve the desired end effector angle.
+
+    The end effector angle is the sum of all joint angles plus joint origins.
+    To achieve a target angle, we set the last joint to:
+        theta_last = target_angle - sum(theta_i + origin_i for i in 0..n-2) - origin_last
+    """
+    n_joints = thetas.shape[0]
+
+    # Compute cumulative angle from all joints except the last
+    cumulative_angle = jnp.float32(0.0)
+    for i in range(n_joints - 1):
+        cumulative_angle = cumulative_angle + thetas[i] + robot_params.joint_origins[i]
+
+    # Required last joint angle to achieve target
+    required_last = (
+        target_angle - cumulative_angle - robot_params.joint_origins[n_joints - 1]
+    )
+
+    # Normalize to [-pi, pi]
+    required_last = jnp.arctan2(jnp.sin(required_last), jnp.cos(required_last))
+
+    # Clamp to joint limits
+    required_last = jnp.clip(
+        required_last,
+        robot_params.joint_min[n_joints - 1],
+        robot_params.joint_max[n_joints - 1],
+    )
+
+    # Update thetas with new last joint angle
+    return thetas.at[n_joints - 1].set(required_last)
+
+
 def _optimization_step(
     state: SolverState,
     robot_params: RobotParams,
     target_x: float,
     target_y: float,
     target_angle: float,
-    angle_weight: float,
+    lock_angle: bool,
     nogo_weight: float,
     nogo_params: Optional[NogoRegionParams],
     lr: float,
@@ -217,8 +245,6 @@ def _optimization_step(
         robot_params,
         target_x,
         target_y,
-        target_angle,
-        angle_weight,
         nogo_weight,
         nogo_params,
     )
@@ -229,6 +255,14 @@ def _optimization_step(
 
     # Clamp joint angles to limits
     new_thetas = jnp.clip(new_thetas, robot_params.joint_min, robot_params.joint_max)
+
+    # If angle locking is enabled, set the last joint to achieve the target angle
+    new_thetas = lax.cond(
+        lock_angle,
+        lambda t: _set_last_joint_for_angle(t, robot_params, target_angle),
+        lambda t: t,
+        new_thetas,
+    )
 
     # Check convergence
     converged = jnp.abs(state.prev_loss - loss) < tolerance
@@ -249,7 +283,7 @@ def _solve_ik_jit(
     target_x: float,
     target_y: float,
     target_angle: float,
-    angle_weight: float,
+    lock_angle: bool,
     nogo_weight: float,
     nogo_params: Optional[NogoRegionParams],
     lr: float,
@@ -264,8 +298,8 @@ def _solve_ik_jit(
         initial_thetas: Initial joint angles.
         robot_params: Static robot parameters.
         target_x, target_y: Target end effector position.
-        target_angle: Target end effector angle.
-        angle_weight: Weight for angle constraint.
+        target_angle: Target end effector angle (used if lock_angle is True).
+        lock_angle: Whether to lock the end effector angle.
         nogo_weight: Weight for nogo zone penalty.
         nogo_params: Nogo region parameters (or None).
         lr: Learning rate.
@@ -285,6 +319,14 @@ def _solve_ik_jit(
         initial_thetas, robot_params.joint_min, robot_params.joint_max
     )
 
+    # If angle locking is enabled, set the last joint initially
+    initial_thetas = lax.cond(
+        lock_angle,
+        lambda t: _set_last_joint_for_angle(t, robot_params, target_angle),
+        lambda t: t,
+        initial_thetas,
+    )
+
     # Initial state
     init_state = SolverState(
         thetas=initial_thetas,
@@ -302,7 +344,7 @@ def _solve_ik_jit(
             target_x,
             target_y,
             target_angle,
-            angle_weight,
+            lock_angle,
             nogo_weight,
             effective_nogo_params,
             lr,
@@ -472,15 +514,11 @@ class IKNumericJAX:
         target_x, target_y = desired.ee_position
 
         # Extract angle constraint
-        if desired.ee_angle is not None:
-            target_angle = desired.ee_angle
-            angle_weight = 1.0e3
-        else:
-            target_angle = 0.0
-            angle_weight = 0.0
+        lock_angle = desired.ee_angle is not None
+        target_angle = desired.ee_angle if lock_angle else 0.0
 
         # Weights
-        nogo_weight = 1.0e2 if self.has_nogo else 0.0
+        nogo_weight = 20.0 if self.has_nogo else 0.0
 
         # Initial angles
         initial_thetas = jnp.array(state.current.joint_angles, dtype=jnp.float32)
@@ -493,8 +531,6 @@ class IKNumericJAX:
                     self.robot_params,
                     target_x,
                     target_y,
-                    target_angle,
-                    angle_weight,
                     nogo_weight,
                     self.nogo_params if self.has_nogo else None,
                 )
@@ -510,7 +546,7 @@ class IKNumericJAX:
             target_x,
             target_y,
             target_angle,
-            angle_weight,
+            lock_angle,
             nogo_weight,
             self.nogo_params,
             self.lr,
@@ -575,7 +611,7 @@ if __name__ == "__main__":
         RegionRectangle(0.5, 10.0, -10.0, 1.0),
         RegionRectangle(0.5, 10.0, 1.6, 5.0),
     ]
-    world = WorldModel()
+    world = WorldModel(nogo=nogo)
 
     # Create the IK solver
     ik_solver = IKNumericJAX(
