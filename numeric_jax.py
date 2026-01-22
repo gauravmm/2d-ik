@@ -129,6 +129,141 @@ def _rectangle_point_residual(point_x: Array, point_y: Array, params: Array) -> 
     )
 
 
+def _halfspace_line_residual(
+    p1_x: Array, p1_y: Array, p2_x: Array, p2_y: Array, params: Array
+) -> Array:
+    """Compute halfspace residual for a line segment. Positive = inside (violation).
+
+    Returns the sum of clamped endpoint residuals (only positive contributions).
+    """
+    normal_x, normal_y, anchor_x, anchor_y = params[0], params[1], params[2], params[3]
+
+    # Compute residuals at both endpoints
+    dx1 = p1_x - anchor_x
+    dy1 = p1_y - anchor_y
+    residual1 = normal_x * dx1 + normal_y * dy1
+
+    dx2 = p2_x - anchor_x
+    dy2 = p2_y - anchor_y
+    residual2 = normal_x * dx2 + normal_y * dy2
+
+    # Sum of clamped residuals (only penalize when inside)
+    return jnp.maximum(residual1, 0.0) + jnp.maximum(residual2, 0.0)
+
+
+def _ball_line_residual(
+    p1_x: Array, p1_y: Array, p2_x: Array, p2_y: Array, params: Array
+) -> Array:
+    """Compute ball residual for a line segment. Positive = inside (violation).
+
+    Returns the maximum of endpoint collision and segment collision with the ball.
+    """
+    center_x, center_y, radius = params[0], params[1], params[2]
+
+    # Check endpoint collisions
+    dx1 = p1_x - center_x
+    dy1 = p1_y - center_y
+    dist1 = jnp.sqrt(dx1**2 + dy1**2 + 1e-10)
+    residual1 = radius - dist1
+
+    dx2 = p2_x - center_x
+    dy2 = p2_y - center_y
+    dist2 = jnp.sqrt(dx2**2 + dy2**2 + 1e-10)
+    residual2 = radius - dist2
+
+    endpoint_collision = jnp.maximum(residual1, 0.0) + jnp.maximum(residual2, 0.0)
+
+    # Vector from p1 to p2
+    seg_dx = p2_x - p1_x
+    seg_dy = p2_y - p1_y
+
+    # Vector from p1 to center
+    to_center_x = center_x - p1_x
+    to_center_y = center_y - p1_y
+
+    # Project center onto line, clamped to segment [0, 1]
+    seg_len_sq = seg_dx**2 + seg_dy**2 + 1e-10  # Avoid division by zero
+    t = (to_center_x * seg_dx + to_center_y * seg_dy) / seg_len_sq
+    t = jnp.clip(t, 0.0, 1.0)
+
+    # Closest point on segment
+    closest_x = p1_x + t * seg_dx
+    closest_y = p1_y + t * seg_dy
+
+    # Distance from closest point to center
+    dist_x = center_x - closest_x
+    dist_y = center_y - closest_y
+    perpendicular_distance = jnp.sqrt(dist_x**2 + dist_y**2 + 1e-10)
+
+    segment_collision = jnp.maximum(radius - perpendicular_distance, 0.0)
+
+    return jnp.maximum(endpoint_collision, segment_collision)
+
+
+def _rectangle_line_residual(
+    p1_x: Array, p1_y: Array, p2_x: Array, p2_y: Array, params: Array
+) -> Array:
+    """Compute rectangle residual for a line segment. Positive = inside (violation).
+
+    Returns the maximum of endpoint collision and edge intersection collision.
+    """
+    left, right, bottom, top = params[0], params[1], params[2], params[3]
+
+    # Check endpoint collisions
+    def point_residual(px: Array, py: Array) -> Array:
+        dist_to_left = px - left
+        dist_to_right = right - px
+        dist_to_bottom = py - bottom
+        dist_to_top = top - py
+        return jnp.minimum(
+            jnp.minimum(dist_to_left, dist_to_right),
+            jnp.minimum(dist_to_bottom, dist_to_top),
+        )
+
+    residual1 = point_residual(p1_x, p1_y)
+    residual2 = point_residual(p2_x, p2_y)
+    endpoint_collision = jnp.maximum(residual1, 0.0) + jnp.maximum(residual2, 0.0)
+
+    # Vector from p1 to p2
+    dx = p2_x - p1_x
+    dy = p2_y - p1_y
+
+    # Helper to compute edge intersection score
+    def edge_intersection_score(
+        t: Array, edge_coord: Array, edge_min: Array, edge_max: Array
+    ) -> Array:
+        # Check t in [0, 1]
+        t_valid = jnp.minimum(t, 1.0 - t)
+        # Check coord in [edge_min, edge_max]
+        coord_valid = jnp.minimum(edge_coord - edge_min, edge_max - edge_coord)
+        # Both must be non-negative
+        return jnp.maximum(jnp.minimum(t_valid, coord_valid), 0.0)
+
+    # Left edge intersection
+    t_left = (left - p1_x) / (dx + 1e-10)
+    y_at_left = p1_y + t_left * dy
+    left_collision = edge_intersection_score(t_left, y_at_left, bottom, top)
+
+    # Right edge intersection
+    t_right = (right - p1_x) / (dx + 1e-10)
+    y_at_right = p1_y + t_right * dy
+    right_collision = edge_intersection_score(t_right, y_at_right, bottom, top)
+
+    # Bottom edge intersection
+    t_bottom = (bottom - p1_y) / (dy + 1e-10)
+    x_at_bottom = p1_x + t_bottom * dx
+    bottom_collision = edge_intersection_score(t_bottom, x_at_bottom, left, right)
+
+    # Top edge intersection
+    t_top = (top - p1_y) / (dy + 1e-10)
+    x_at_top = p1_x + t_top * dx
+    top_collision = edge_intersection_score(t_top, x_at_top, left, right)
+
+    edge_collision = left_collision + right_collision + bottom_collision + top_collision
+
+    return jnp.maximum(endpoint_collision, edge_collision)
+
+
 def _compute_nogo_penalty_point(
     joint_xs: Array, joint_ys: Array, nogo_params: NogoRegionParams
 ) -> Array:
