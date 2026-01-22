@@ -87,7 +87,7 @@ def _forward_kinematics(
 
         return (x, y, cumulative_angle), (x, y)
 
-    init_carry = (jnp.float64(0.0), jnp.float64(0.0), jnp.float64(0.0))
+    init_carry = (jnp.float32(0.0), jnp.float32(0.0), jnp.float32(0.0))
     inputs = (link_lengths, joint_origins, thetas)
 
     (ee_x, ee_y, ee_angle), (joint_xs, joint_ys) = lax.scan(scan_fn, init_carry, inputs)
@@ -133,7 +133,7 @@ def _compute_nogo_penalty_point(
     joint_xs: Array, joint_ys: Array, nogo_params: NogoRegionParams
 ) -> Array:
     """Compute nogo penalty using point collision detection."""
-    penalty = jnp.float64(0.0)
+    penalty = jnp.float32(0.0)
 
     # Skip origin (index 0), check all other joint positions
     for i in range(1, joint_xs.shape[0]):
@@ -144,9 +144,7 @@ def _compute_nogo_penalty_point(
             residual = _halfspace_point_residual(px, py, params)
             return jnp.maximum(residual, 0.0) ** 2
 
-        penalty = penalty + jnp.sum(
-            jax.vmap(halfspace_penalty)(nogo_params.halfspaces)
-        )
+        penalty = penalty + jnp.sum(jax.vmap(halfspace_penalty)(nogo_params.halfspaces))
 
         # Balls
         def ball_penalty(params):
@@ -191,15 +189,15 @@ def _compute_objective(
 
     objective = distance_squared + angle_weight * angle_error_squared
 
-    # Joint limit penalty
-    if joint_limit_weight > 0:
-        below_min = jnp.maximum(robot_params.joint_min - thetas, 0.0)
-        above_max = jnp.maximum(thetas - robot_params.joint_max, 0.0)
-        joint_limit_penalty = jnp.sum(below_min**2 + above_max**2)
-        objective = objective + joint_limit_weight * joint_limit_penalty
+    # Joint limit penalty (always computed, weight of 0 disables it)
+    below_min = jnp.maximum(robot_params.joint_min - thetas, 0.0)
+    above_max = jnp.maximum(thetas - robot_params.joint_max, 0.0)
+    joint_limit_penalty = jnp.sum(below_min**2 + above_max**2)
+    objective = objective + joint_limit_weight * joint_limit_penalty
 
-    # Nogo penalty
-    if nogo_params is not None and nogo_weight > 0:
+    # Nogo penalty (always computed if nogo_params provided, weight of 0 disables it)
+    # Note: nogo_params is None vs not-None is a static condition handled by has_nogo flag
+    if nogo_params is not None:
         nogo_penalty = _compute_nogo_penalty_point(joint_xs, joint_ys, nogo_params)
         objective = objective + nogo_weight * nogo_penalty
 
@@ -295,7 +293,7 @@ def _solve_ik_jit(
         thetas=initial_thetas,
         velocity=jnp.zeros_like(initial_thetas),
         iteration=0,
-        prev_loss=jnp.float64(jnp.inf),
+        prev_loss=jnp.float32(jnp.inf),
         converged=False,
     )
 
@@ -385,8 +383,8 @@ class IKNumericJAX:
         self.tolerance = tolerance
 
         # Build robot parameters for JIT
-        link_lengths = jnp.array(model.link_lengths, dtype=jnp.float64)
-        joint_origins = jnp.array(model.joint_origins, dtype=jnp.float64)
+        link_lengths = jnp.array(model.link_lengths, dtype=jnp.float32)
+        joint_origins = jnp.array(model.joint_origins, dtype=jnp.float32)
 
         # Process joint limits
         joint_min = []
@@ -407,8 +405,8 @@ class IKNumericJAX:
         self.robot_params = RobotParams(
             link_lengths=link_lengths,
             joint_origins=joint_origins,
-            joint_min=jnp.array(joint_min, dtype=jnp.float64),
-            joint_max=jnp.array(joint_max, dtype=jnp.float64),
+            joint_min=jnp.array(joint_min, dtype=jnp.float32),
+            joint_max=jnp.array(joint_max, dtype=jnp.float32),
         )
 
         # Build nogo parameters
@@ -439,9 +437,13 @@ class IKNumericJAX:
 
             # Convert to arrays, using dummy arrays if empty (for JIT compatibility)
             self.nogo_params = NogoRegionParams(
-                halfspaces=jnp.array(halfspaces if halfspaces else [[0, 0, 0, 0]], dtype=jnp.float64),
-                balls=jnp.array(balls if balls else [[0, 0, 0]], dtype=jnp.float64),
-                rectangles=jnp.array(rectangles if rectangles else [[0, 0, 0, 0]], dtype=jnp.float64),
+                halfspaces=jnp.array(
+                    halfspaces if halfspaces else [[0, 0, 0, 0]], dtype=jnp.float32
+                ),
+                balls=jnp.array(balls if balls else [[0, 0, 0]], dtype=jnp.float32),
+                rectangles=jnp.array(
+                    rectangles if rectangles else [[0, 0, 0, 0]], dtype=jnp.float32
+                ),
             )
 
             # Store counts to mask out dummy entries
@@ -489,7 +491,7 @@ class IKNumericJAX:
         joint_limit_weight = 1.0e3 if has_limits else 0.0
 
         # Initial angles
-        initial_thetas = jnp.array(state.current.joint_angles, dtype=jnp.float64)
+        initial_thetas = jnp.array(state.current.joint_angles, dtype=jnp.float32)
 
         # Compute initial loss for profiling
         if profile:
@@ -596,9 +598,7 @@ if __name__ == "__main__":
     )
 
     # Initial position (within joint limits)
-    initial_position = RobotPosition(
-        joint_angles=(0.5 * math.pi, -math.pi / 4, 0.0)
-    )
+    initial_position = RobotPosition(joint_angles=(0.5 * math.pi, -math.pi / 4, 0.0))
     current_state = RobotState(model, current=initial_position, world=world)
 
     # Create visualizer
