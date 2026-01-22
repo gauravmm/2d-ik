@@ -338,14 +338,10 @@ class IKSymbolic:
         # When angle_weight = 0, this reduces to position-only optimization
         combined_objective = distance_squared + angle_weight * angle_error_squared
         # Simplify the combined objective function
-        combined_objective = sp.simplify(combined_objective)
+        # combined_objective = sp.simplify(combined_objective)
 
         # Add nogo zone penalty for each link
         if self.nogo:
-            print(
-                "ERROR: nogo zones are not supported by the IKSymbolic solver due to slowdown in the simplify steps."
-            )
-            raise NotImplementedError()
             nogo_weight = sp.Symbol("nogo_weight", real=True, positive=True)
             nogo_penalty: sp.Expr = sp.Float(0)
 
@@ -473,8 +469,7 @@ class IKSymbolic:
         # Build bounds for L-BFGS-B optimizer
         # Convert None to (-inf, inf) for unconstrained joints
         bounds = [
-            (b[0], b[1]) if b is not None else (None, None)
-            for b in self.joint_bounds
+            (b[0], b[1]) if b is not None else (None, None) for b in self.joint_bounds
         ]
 
         # Minimize distance to target using L-BFGS-B with analytical gradient and bounds
@@ -497,7 +492,11 @@ if __name__ == "__main__":
     # Create a 3-link robot
     model = RobotModel(
         link_lengths=(1.0, 0.8, 0.6),
-        joint_limits=((0.4 * math.pi, math.pi), None, None),
+        joint_limits=(
+            (0.4 * math.pi, math.pi),
+            (-math.pi, 0),
+            (-math.pi / 2, math.pi / 2),
+        ),
     )
     # Create a world with a narrow space to enter.
     nogo = [
@@ -505,7 +504,7 @@ if __name__ == "__main__":
         RegionRectangle(0.5, 10.0, -10.0, 1.0),
         RegionRectangle(0.5, 10.0, 1.6, 5.0),
     ]
-    world = WorldModel()
+    world = WorldModel(nogo=nogo)
 
     # Create the IK solver
     ik_solver = IKSymbolic(model, world=world, collision_geometry="point")

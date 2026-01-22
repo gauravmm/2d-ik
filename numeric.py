@@ -257,6 +257,19 @@ class IKNumeric:
         self.link_lengths = torch.tensor(model.link_lengths, dtype=torch.float64)
         self.joint_origins = torch.tensor(model.joint_origins, dtype=torch.float64)
 
+        # Process joint limits from model
+        # joint_limits is a tuple of (min, max) or None for each joint
+        self.joint_bounds: list[tuple[float, float] | None] = []
+        if model.joint_limits:
+            for limit in model.joint_limits:
+                if limit is not None:
+                    self.joint_bounds.append((limit[0], limit[1]))
+                else:
+                    self.joint_bounds.append(None)
+        # Pad with None if joint_limits is shorter than number of joints
+        while len(self.joint_bounds) < self.n_joints:
+            self.joint_bounds.append(None)
+
         # Pre-build numeric region helpers if nogo zones exist
         self.numeric_regions = None
         if self.nogo:
@@ -294,6 +307,7 @@ class IKNumeric:
         target_angle: float,
         angle_weight: float,
         nogo_weight: float,
+        joint_limit_weight: float,
     ) -> torch.Tensor:
         """Compute the objective function value."""
         ee_x, ee_y, ee_angle, joint_positions = self._forward_kinematics(thetas)
@@ -307,6 +321,19 @@ class IKNumeric:
         angle_error_squared = angle_error**2
 
         objective = distance_squared + angle_weight * angle_error_squared
+
+        # Add joint limit penalty
+        if joint_limit_weight > 0:
+            joint_limit_penalty = torch.tensor(0.0, dtype=torch.float64)
+            for i, bound in enumerate(self.joint_bounds):
+                if bound is not None:
+                    min_val, max_val = bound
+                    # Penalize going below minimum
+                    below_min = torch.clamp(min_val - thetas[i], min=0.0)
+                    # Penalize going above maximum
+                    above_max = torch.clamp(thetas[i] - max_val, min=0.0)
+                    joint_limit_penalty = joint_limit_penalty + below_min**2 + above_max**2
+            objective = objective + joint_limit_weight * joint_limit_penalty
 
         # Add nogo zone penalty
         if self.numeric_regions:
@@ -374,6 +401,9 @@ class IKNumeric:
         # Nogo weight
         nogo_weight = 1.0e2 if self.numeric_regions else 0.0
 
+        # Joint limit weight - high penalty to enforce limits
+        joint_limit_weight = 1.0e3 if any(b is not None for b in self.joint_bounds) else 0.0
+
         # Initialize joint angles from current state
         thetas = torch.tensor(
             list(state.current.joint_angles), dtype=torch.float64, requires_grad=True
@@ -396,7 +426,7 @@ class IKNumeric:
             optimizer.zero_grad()
 
             loss = self._compute_objective(
-                thetas, target_x, target_y, target_angle, angle_weight, nogo_weight
+                thetas, target_x, target_y, target_angle, angle_weight, nogo_weight, joint_limit_weight
             )
 
             # Record initial loss
@@ -454,8 +484,15 @@ if __name__ == "__main__":
 
     from visualization import RobotVisualizer
 
-    # Create a 3-link robot
-    model = RobotModel(link_lengths=(1.0, 1.0, 0.6))
+    # Create a 3-link robot with joint limits
+    model = RobotModel(
+        link_lengths=(1.0, 0.8, 0.6),
+        joint_limits=(
+            (0.4 * math.pi, math.pi),
+            (-math.pi, 0),
+            (-math.pi / 2, math.pi / 2),
+        ),
+    )
     # Create a world with a narrow space to enter.
     nogo = [
         RegionHalfspace((0, -1), (0, -0.2)),
@@ -469,9 +506,9 @@ if __name__ == "__main__":
         model, world=world, collision_geometry="line", max_iterations=200, lr=0.06
     )
 
-    # Initial position
+    # Initial position (within joint limits)
     initial_position = RobotPosition(
-        joint_angles=(2.5 * math.pi / 4, -math.pi + 0.1, math.pi - 0.1)
+        joint_angles=(0.5 * math.pi, -math.pi / 4, 0.0)
     )
     current_state = RobotState(model, current=initial_position, world=world)
 

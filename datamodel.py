@@ -15,6 +15,9 @@ class RobotModel:
 
     link_lengths: tuple[float, ...]  # Length of each link in the chain
     joint_origins: tuple[float, ...] = field(default=tuple())  # Initial angle offset
+    joint_limits: tuple[tuple[float, float] | None, ...] = field(
+        default=tuple()
+    )  # Joint angle limits, set in joint space. These joint angle limits are relative to the joint origin
 
     def __post_init__(self):
         # Validate that we have consistent dimensions
