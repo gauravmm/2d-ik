@@ -1,6 +1,7 @@
 #!python3
 
 import math
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Collection, List, Optional, Tuple
 
@@ -184,3 +185,31 @@ class IKReturn:
     initial_loss: float  # Loss at the start of optimization
     final_loss: float  # Loss at the end of optimization
     position_error: float  # Final Euclidean distance to target position
+
+
+class IKSolver(ABC):
+    """Base interface for all IK solvers."""
+
+    @abstractmethod
+    def __call__(self, state: RobotState, desired: DesiredPosition) -> IKReturn:
+        """Solve IK for the desired position.
+
+        Args:
+            state: Current robot state.
+            desired: Desired end effector position and optional angle.
+
+        Returns:
+            IKReturn containing the solution state and profiling information.
+        """
+        ...
+
+    def starting(self, state: RobotState) -> None:
+        """Called when starting to use this solver with a given state.
+
+        This method can be overridden to perform initialization or warmup.
+        By default, it does nothing.
+
+        Args:
+            state: The initial robot state.
+        """
+        pass

@@ -9,6 +9,7 @@ from scipy.optimize import minimize
 from datamodel import (
     DesiredPosition,
     IKReturn,
+    IKSolver,
     Region,
     RegionBall,
     RegionHalfspace,
@@ -250,7 +251,7 @@ def make_symbolic_region(region: Region):
         raise TypeError(f"Unknown region type: {type(region)}")
 
 
-class IKNumericSympy:
+class IKNumericSympy(IKSolver):
     """Implements a symbolic solver for inverse kinematics using the Sympy solver."""
 
     def __init__(

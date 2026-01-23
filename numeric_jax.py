@@ -12,6 +12,7 @@ from jax import lax
 from datamodel import (
     DesiredPosition,
     IKReturn,
+    IKSolver,
     RegionBall,
     RegionHalfspace,
     RegionRectangle,
@@ -517,7 +518,7 @@ def _solve_ik_jit(
     )
 
 
-class IKNumericJAX:
+class IKNumericJAX(IKSolver):
     """Implements a numerical IK solver using JAX with JIT compilation."""
 
     def __init__(
@@ -620,6 +621,44 @@ class IKNumericJAX:
             self._n_halfspaces = len(halfspaces)
             self._n_balls = len(balls)
             self._n_rectangles = len(rectangles)
+
+    def starting(self, state: RobotState) -> None:
+        """Warm up the JIT-compiled solver by running a dummy solve.
+
+        This triggers JAX JIT compilation so subsequent calls are fast.
+
+        Args:
+            state: The initial robot state.
+        """
+        if state.model != self.model:
+            raise ValueError("State model does not match IKNumericJAX model")
+
+        # Run a dummy solve to trigger JIT compilation
+        initial_thetas = jnp.array(state.current.joint_angles, dtype=jnp.float32)
+        nogo_weight = 0.0
+        if self.has_nogo:
+            nogo_weight = 2.0 if self.use_line_collision else 20.0
+
+        # Use current end effector position as target for warmup
+        positions = state.get_joint_positions()
+        target_x, target_y = positions[-1]
+
+        _solve_ik_jit(
+            initial_thetas,
+            self.robot_params,
+            target_x,
+            target_y,
+            0.0,  # target_angle
+            False,  # lock_angle
+            nogo_weight,
+            self.nogo_params,
+            self.use_line_collision,
+            self.lr,
+            self.momentum,
+            self.tolerance,
+            self.max_iterations,
+            self.has_nogo,
+        )
 
     def __call__(
         self,

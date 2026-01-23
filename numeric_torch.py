@@ -8,6 +8,7 @@ import torch
 from datamodel import (
     DesiredPosition,
     IKReturn,
+    IKSolver,
     Region,
     RegionBall,
     RegionHalfspace,
@@ -219,7 +220,7 @@ def make_numeric_region(region: Region):
         raise TypeError(f"Unknown region type: {type(region)}")
 
 
-class IKNumericTorch:
+class IKNumericTorch(IKSolver):
     """Implements a numerical solver for inverse kinematics using PyTorch autodiff."""
 
     def __init__(

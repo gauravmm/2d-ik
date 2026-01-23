@@ -18,6 +18,7 @@ import numpy as np
 from datamodel import (
     DesiredPosition,
     IKReturn,
+    IKSolver,
     Region,
     RegionBall,
     RegionHalfspace,
@@ -195,7 +196,7 @@ def make_numpy_region(region: Region) -> NumpyRegion:
         raise TypeError(f"Unknown region type: {type(region)}")
 
 
-class IKFabrik:
+class IKFabrik(IKSolver):
     """Implements FABRIK inverse kinematics solver using numpy."""
 
     def __init__(
