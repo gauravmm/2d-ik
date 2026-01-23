@@ -4,7 +4,7 @@
 import math
 from typing import List
 from datamodel import DesiredPosition, RobotModel, RobotPosition, RobotState
-from symbolic import IKSymbolic
+from numeric_sympy import IKNumericSympy
 
 
 def test_simple_two_link():
@@ -17,7 +17,7 @@ def test_simple_two_link():
     model = RobotModel(link_lengths=(1.0, 1.0))
 
     # Create the IK solver
-    ik_solver = IKSymbolic(model)
+    ik_solver = IKNumericSympy(model)
 
     # Start from a known configuration
     initial_position = RobotPosition(joint_angles=(0.0, 0.0))
@@ -63,7 +63,7 @@ def test_three_link_robot():
     model = RobotModel(link_lengths=(1.0, 0.8, 0.6))
 
     # Create the IK solver
-    ik_solver = IKSymbolic(model)
+    ik_solver = IKNumericSympy(model)
 
     # Start from a configuration
     initial_position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
@@ -109,7 +109,7 @@ def test_unreachable_target():
     model = RobotModel(link_lengths=(1.0, 1.0))
 
     # Create the IK solver
-    ik_solver = IKSymbolic(model)
+    ik_solver = IKNumericSympy(model)
 
     # Start from a configuration
     initial_position = RobotPosition(joint_angles=(0.0, 0.0))
@@ -152,7 +152,7 @@ def test_unreachable_target():
 
 
 if __name__ == "__main__":
-    test_results : List[bool] = []
+    test_results: List[bool] = []
     test_results.append(test_simple_two_link())
     test_results.append(test_three_link_robot())
     test_results.append(test_unreachable_target())

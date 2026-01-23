@@ -220,7 +220,7 @@ def make_numeric_region(region: Region):
 
 
 @dataclass
-class IKNumericProfile:
+class IKNumericTorchProfile:
     """Profiling results from IKNumeric solver."""
 
     solve_time_ms: float  # Total solve time in milliseconds
@@ -231,7 +231,7 @@ class IKNumericProfile:
     position_error: float  # Final Euclidean distance to target position
 
 
-class IKNumeric:
+class IKNumericTorch:
     """Implements a numerical solver for inverse kinematics using PyTorch autodiff."""
 
     def __init__(
@@ -332,7 +332,9 @@ class IKNumeric:
                     below_min = torch.clamp(min_val - thetas[i], min=0.0)
                     # Penalize going above maximum
                     above_max = torch.clamp(thetas[i] - max_val, min=0.0)
-                    joint_limit_penalty = joint_limit_penalty + below_min**2 + above_max**2
+                    joint_limit_penalty = (
+                        joint_limit_penalty + below_min**2 + above_max**2
+                    )
             objective = objective + joint_limit_weight * joint_limit_penalty
 
         # Add nogo zone penalty
@@ -370,7 +372,7 @@ class IKNumeric:
         state: RobotState,
         desired: DesiredPosition,
         profile: bool = False,
-    ) -> RobotState | Tuple[RobotState, IKNumericProfile]:
+    ) -> RobotState | Tuple[RobotState, IKNumericTorchProfile]:
         """Solve IK for the desired position.
 
         Args:
@@ -402,7 +404,9 @@ class IKNumeric:
         nogo_weight = 1.0e2 if self.numeric_regions else 0.0
 
         # Joint limit weight - high penalty to enforce limits
-        joint_limit_weight = 1.0e3 if any(b is not None for b in self.joint_bounds) else 0.0
+        joint_limit_weight = (
+            1.0e3 if any(b is not None for b in self.joint_bounds) else 0.0
+        )
 
         # Initialize joint angles from current state
         thetas = torch.tensor(
@@ -426,7 +430,13 @@ class IKNumeric:
             optimizer.zero_grad()
 
             loss = self._compute_objective(
-                thetas, target_x, target_y, target_angle, angle_weight, nogo_weight, joint_limit_weight
+                thetas,
+                target_x,
+                target_y,
+                target_angle,
+                angle_weight,
+                nogo_weight,
+                joint_limit_weight,
             )
 
             # Record initial loss
@@ -465,7 +475,7 @@ class IKNumeric:
                     torch.sqrt((ee_x - target_x) ** 2 + (ee_y - target_y) ** 2)
                 )
 
-            profile_result = IKNumericProfile(
+            profile_result = IKNumericTorchProfile(
                 solve_time_ms=(end_time - start_time) * 1000,
                 iterations=iterations_completed,
                 converged=converged,
@@ -476,91 +486,3 @@ class IKNumeric:
             return result_state, profile_result
 
         return result_state
-
-
-if __name__ == "__main__":
-    # Interactive IK solver demo using RobotVisualizer
-    import math
-
-    from visualization import RobotVisualizer
-
-    # Create a 3-link robot with joint limits
-    model = RobotModel(
-        link_lengths=(1.0, 0.8, 0.6),
-        joint_limits=(
-            (0.4 * math.pi, math.pi),
-            (-math.pi, 0),
-            (-math.pi / 2, math.pi / 2),
-        ),
-    )
-    # Create a world with a narrow space to enter.
-    nogo = [
-        RegionHalfspace((0, -1), (0, -0.2)),
-        RegionRectangle(0.5, 10.0, -10.0, 1.0),
-        RegionRectangle(0.5, 10.0, 1.6, 5.0),
-    ]
-    world = WorldModel(nogo=nogo)
-
-    # Create the IK solver
-    ik_solver = IKNumeric(
-        model, world=world, collision_geometry="line", max_iterations=200, lr=0.06
-    )
-
-    # Initial position (within joint limits)
-    initial_position = RobotPosition(
-        joint_angles=(0.5 * math.pi, -math.pi / 4, 0.0)
-    )
-    current_state = RobotState(model, current=initial_position, world=world)
-
-    # Create visualizer
-    viz = RobotVisualizer(current_state)
-
-    # Click callback that updates the target and solves IK
-    def on_click(x: float, y: float, btn: Literal["left", "right"]):
-        global current_state
-        print(f"\nClicked at: ({x:.2f}, {y:.2f}) {btn}")
-
-        new_ee_angle: Optional[float] = (
-            current_state.desired.ee_angle if current_state.desired else None
-        )
-        if btn == "right":
-            new_ee_angle = 0.0 if new_ee_angle is None else None
-
-        # Solve IK with profiling
-        try:
-            result = ik_solver(
-                current_state,
-                DesiredPosition(ee_position=(x, y), ee_angle=new_ee_angle),
-                profile=True,
-            )
-            assert isinstance(result, tuple)
-            solution_state, profile = result
-            solution = solution_state.current
-            print(f"Solution: {tuple(f'{a:.3f}' for a in solution.joint_angles)}")
-
-            # Print profiling information
-            print(f"Solve time: {profile.solve_time_ms:.2f}ms")
-            print(f"Iterations: {profile.iterations} (converged: {profile.converged})")
-            print(f"Loss: {profile.initial_loss:.6f} -> {profile.final_loss:.6f}")
-            print(f"Position error: {profile.position_error:.6f}")
-
-            # Update the visualization with the new solution
-            current_state = solution_state
-            viz.update(current_state)
-
-        except Exception as e:
-            print(f"Error solving IK: {e}")
-
-    # Set the click callback
-    viz.set_click_callback(on_click)
-
-    print("Interactive IK Solver (Numeric/PyTorch)")
-    print("=" * 60)
-    print("Click anywhere in the window to set a target position.")
-    print("The robot will solve IK and move to reach that target.")
-    print("=" * 60)
-    print(f"Callback registered: {viz.click_callback is not None}")
-    print(f"Event handler connected: {hasattr(viz, '_click_handler_id')}")
-
-    # Show the visualization
-    viz.show()

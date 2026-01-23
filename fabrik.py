@@ -203,8 +203,8 @@ class IKFabrikProfile:
     solve_time_ms: float  # Total solve time in milliseconds
     iterations: int  # Number of FABRIK iterations
     converged: bool  # Whether the solver converged before max_iterations
-    initial_error: float  # Position error at the start
-    final_error: float  # Position error at the end
+    initial_loss: float  # Position error at the start
+    final_loss: float  # Position error at the end
     position_error: float  # Final Euclidean distance to target position
 
 
@@ -600,7 +600,7 @@ class IKFabrik:
         # Start profiling
         start_time = time.perf_counter()
 
-        initial_error = np.linalg.norm(positions[-1] - target)
+        initial_loss = np.linalg.norm(positions[-1] - target)
         converged = False
         iterations_completed = 0
 
@@ -638,103 +638,16 @@ class IKFabrik:
         )
 
         if profile:
-            final_error = float(np.linalg.norm(positions[-1] - target))
+            final_loss = float(np.linalg.norm(positions[-1] - target))
 
             profile_result = IKFabrikProfile(
                 solve_time_ms=(end_time - start_time) * 1000,
                 iterations=iterations_completed,
                 converged=converged,
-                initial_error=initial_error,
-                final_error=final_error,
-                position_error=final_error,
+                initial_loss=initial_loss,
+                final_loss=final_loss,
+                position_error=final_loss,
             )
             return result_state, profile_result
 
         return result_state
-
-
-if __name__ == "__main__":
-    # Interactive IK solver demo using RobotVisualizer
-    from visualization import RobotVisualizer
-
-    # Create a 3-link robot with joint limits
-    model = RobotModel(
-        link_lengths=(1.0, 0.8, 0.6),
-        joint_limits=(
-            (0.4 * math.pi, math.pi),
-            (-math.pi, 0),
-            (-math.pi / 2, math.pi / 2),
-        ),
-    )
-
-    # Create a world with nogo regions
-    nogo = [
-        RegionHalfspace((0, -1), (0, -0.2)),
-        RegionRectangle(0.5, 10.0, -10.0, 0.6),
-        RegionRectangle(0.5, 10.0, 1.2, 5.0),
-    ]
-    world = WorldModel(nogo=nogo)
-
-    # Create the IK solver with collision detection
-    ik_solver = IKFabrik(
-        model, world=world, max_iterations=100, collision_geometry="line"
-    )
-
-    # Initial position (within joint limits)
-    initial_position = RobotPosition(joint_angles=(0.5 * math.pi, -math.pi / 4, 0.0))
-    current_state = RobotState(model, current=initial_position, world=world)
-
-    # Create visualizer
-    viz = RobotVisualizer(current_state)
-
-    # Click callback that updates the target and solves IK
-    def on_click(x: float, y: float, btn: Literal["left", "right"]):
-        global current_state
-        print(f"\nClicked at: ({x:.2f}, {y:.2f}) {btn}")
-
-        new_ee_angle: Optional[float] = (
-            current_state.desired.ee_angle if current_state.desired else None
-        )
-        if btn == "right":
-            new_ee_angle = 0.0 if new_ee_angle is None else None
-
-        # Solve IK with profiling
-        try:
-            result = ik_solver(
-                current_state,
-                DesiredPosition(ee_position=(x, y), ee_angle=new_ee_angle),
-                profile=True,
-            )
-            assert isinstance(result, tuple)
-            solution_state, profile = result
-            solution = solution_state.current
-            print(f"Solution: {tuple(f'{a:.3f}' for a in solution.joint_angles)}")
-
-            # Print profiling information
-            print(f"Solve time: {profile.solve_time_ms:.2f}ms")
-            print(f"Iterations: {profile.iterations} (converged: {profile.converged})")
-            print(f"Error: {profile.initial_error:.6f} -> {profile.final_error:.6f}")
-            print(f"Position error: {profile.position_error:.6f}")
-
-            # Update the visualization with the new solution
-            current_state = solution_state
-            viz.update(current_state)
-
-        except Exception as e:
-            print(f"Error solving IK: {e}")
-            import traceback
-
-            traceback.print_exc()
-
-    # Set the click callback
-    viz.set_click_callback(on_click)
-
-    print("Interactive IK Solver (FABRIK)")
-    print("=" * 60)
-    print("Click anywhere in the window to set a target position.")
-    print("The robot will solve IK and move to reach that target.")
-    print("Right-click to toggle angle constraint (0 radians).")
-    print("=" * 60)
-
-    # Show the visualization
-    viz.show()

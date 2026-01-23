@@ -4,7 +4,7 @@
 import math
 import pytest
 from datamodel import DesiredPosition, RobotModel, RobotPosition, RobotState
-from symbolic import IKSymbolic
+from numeric_sympy import IKNumericSympy
 
 
 class TestAngleConstraints:
@@ -23,7 +23,7 @@ class TestAngleConstraints:
     def test_position_and_angle_constraint(self, three_link_robot):
         """Test IK solving with both position and angle constraints."""
         model = three_link_robot
-        ik_solver = IKSymbolic(model)
+        ik_solver = IKNumericSympy(model)
 
         target_pos = (1.5, 0.5)
         target_angle = math.pi / 4  # 45 degrees
@@ -60,7 +60,7 @@ class TestAngleConstraints:
     def test_angle_wrapping_positive(self, three_link_robot):
         """Test angle wrapping near +π boundary."""
         model = three_link_robot
-        ik_solver = IKSymbolic(model)
+        ik_solver = IKNumericSympy(model)
 
         target_pos = (0.5, 0.5)
         target_angle = 3.0  # Near π
@@ -92,7 +92,7 @@ class TestAngleConstraints:
     def test_angle_wrapping_negative(self, three_link_robot):
         """Test angle wrapping near -π boundary."""
         model = three_link_robot
-        ik_solver = IKSymbolic(model)
+        ik_solver = IKNumericSympy(model)
 
         target_pos = (0.5, 0.5)
         target_angle = -2.8  # Near -π
@@ -124,7 +124,7 @@ class TestAngleConstraints:
     def test_angle_wrapping_across_boundary(self, three_link_robot):
         """Test angle wrapping when target and solution are on opposite sides of ±π."""
         model = three_link_robot
-        ik_solver = IKSymbolic(model)
+        ik_solver = IKNumericSympy(model)
 
         target_pos = (0.8, 0.3)
         # Target angle close to -π
@@ -149,7 +149,7 @@ class TestAngleConstraints:
     def test_position_only_backward_compatibility(self, three_link_robot):
         """Test that position-only mode works when desired_end_effector_angle is None."""
         model = three_link_robot
-        ik_solver = IKSymbolic(model)
+        ik_solver = IKNumericSympy(model)
 
         target_pos = (1.0, 1.0)
 
@@ -175,7 +175,7 @@ class TestAngleConstraints:
     def test_same_position_different_angles(self, three_link_robot):
         """Test that the same position can be reached with different end effector angles."""
         model = three_link_robot
-        ik_solver = IKSymbolic(model)
+        ik_solver = IKNumericSympy(model)
 
         target_pos = (1.5, 0.5)
         initial_position = RobotPosition(joint_angles=(0.0, 0.0, 0.0))
@@ -221,7 +221,7 @@ class TestAngleConstraints:
         to satisfy exactly. This test verifies the solver finds a best compromise.
         """
         model: RobotModel = two_link_robot
-        ik_solver = IKSymbolic(model)
+        ik_solver = IKNumericSympy(model)
 
         # For a 2-link robot with links of length 1.0 each,
         # choose a position and angle that can be satisfied together
@@ -257,7 +257,7 @@ class TestAngleConstraints:
     def test_zero_angle_constraint(self, three_link_robot):
         """Test that zero angle (pointing right) works correctly."""
         model = three_link_robot
-        ik_solver = IKSymbolic(model)
+        ik_solver = IKNumericSympy(model)
 
         target_pos = (2.0, 0.2)
         target_angle = 0.0  # Pointing right
@@ -288,7 +288,7 @@ class TestAngleConstraints:
     def test_pi_angle_constraint(self, three_link_robot):
         """Test that π angle (pointing left) works correctly."""
         model = three_link_robot
-        ik_solver = IKSymbolic(model)
+        ik_solver = IKNumericSympy(model)
 
         target_pos = (-1.0, 0.5)
         target_angle = math.pi  # Pointing left
@@ -321,7 +321,7 @@ class TestAngleConstraints:
     def test_different_initial_positions(self, three_link_robot):
         """Test that angle constraint works from different initial configurations."""
         model = three_link_robot
-        ik_solver = IKSymbolic(model)
+        ik_solver = IKNumericSympy(model)
 
         target_pos = (1.2, 0.6)
         target_angle = math.pi / 6  # 30 degrees
@@ -365,7 +365,7 @@ class TestAngleConstraints:
         model = RobotModel(
             link_lengths=(1.0, 0.8, 0.6), joint_origins=(0.1, -0.2, 0.15)
         )
-        ik_solver = IKSymbolic(model)
+        ik_solver = IKNumericSympy(model)
 
         target_pos = (1.0, 0.5)
         target_angle = math.pi / 4

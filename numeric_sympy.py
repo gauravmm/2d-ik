@@ -1,6 +1,6 @@
 #!python3
 
-from typing import Literal, Optional, Tuple
+from typing import Literal, Tuple
 
 import sympy as sp
 from scipy.optimize import minimize
@@ -248,7 +248,7 @@ def make_symbolic_region(region: Region):
         raise TypeError(f"Unknown region type: {type(region)}")
 
 
-class IKSymbolic:
+class IKNumericSympy:
     """Implements a symbolic solver for inverse kinematics using the Sympy solver."""
 
     def __init__(
@@ -481,87 +481,3 @@ class IKSymbolic:
         return state.with_position(
             RobotPosition(joint_angles=joint_angles), desired=desired
         )
-
-
-if __name__ == "__main__":
-    # Interactive IK solver demo using RobotVisualizer
-    import math
-
-    from visualization import RobotVisualizer
-
-    # Create a 3-link robot
-    model = RobotModel(
-        link_lengths=(1.0, 0.8, 0.6),
-        joint_limits=(
-            (0.4 * math.pi, math.pi),
-            (-math.pi, 0),
-            (-math.pi / 2, math.pi / 2),
-        ),
-    )
-    # Create a world with a narrow space to enter.
-    nogo = [
-        RegionHalfspace((0, -1), (0, -0.2)),
-        RegionRectangle(0.5, 10.0, -10.0, 1.0),
-        RegionRectangle(0.5, 10.0, 1.6, 5.0),
-    ]
-    world = WorldModel(nogo=nogo)
-
-    # Create the IK solver
-    ik_solver = IKSymbolic(model, world=world, collision_geometry="point")
-
-    # Initial position
-    initial_position = RobotPosition(
-        joint_angles=(2.5 * math.pi / 4, -math.pi + 0.1, math.pi - 0.1)
-    )
-    global current_state
-    current_state = RobotState(model, current=initial_position, world=world)
-
-    # Create visualizer
-    viz = RobotVisualizer(current_state)
-
-    # Click callback that updates the target and solves IK
-    def on_click(x: float, y: float, btn: Literal["left", "right"]):
-        global current_state
-        print(f"\nClicked at: ({x:.2f}, {y:.2f}) {btn}")
-
-        new_ee_angle: Optional[float] = (
-            current_state.desired.ee_angle if current_state.desired else None
-        )
-        if btn == "right":
-            new_ee_angle = 0.0 if new_ee_angle is None else None
-
-        # Solve IK
-        try:
-            solution_state = ik_solver(
-                current_state,
-                DesiredPosition(ee_position=(x, y), ee_angle=new_ee_angle),
-            )
-            solution = solution_state.current
-            print(f"Solution: {tuple(f'{a:.3f}' for a in solution.joint_angles)}")
-
-            # Verify the solution
-            end_effector_positions = model.forward_kinematics(solution)
-            end_effector = end_effector_positions[-1]
-            error = math.sqrt((end_effector[0] - x) ** 2 + (end_effector[1] - y) ** 2)
-            print(f"Position error: {error:.6f}")
-
-            # Update the visualization with the new solution
-            current_state = solution_state
-            viz.update(current_state)
-
-        except Exception as e:
-            print(f"Error solving IK: {e}")
-
-    # Set the click callback
-    viz.set_click_callback(on_click)
-
-    print("Interactive IK Solver")
-    print("=" * 60)
-    print("Click anywhere in the window to set a target position.")
-    print("The robot will solve IK and move to reach that target.")
-    print("=" * 60)
-    print(f"Callback registered: {viz.click_callback is not None}")
-    print(f"Event handler connected: {hasattr(viz, '_click_handler_id')}")
-
-    # Show the visualization
-    viz.show()

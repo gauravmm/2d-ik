@@ -23,7 +23,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from datamodel import DesiredPosition, RobotModel, RobotPosition, RobotState
-from symbolic import IKSymbolic
+from numeric_sympy import IKNumericSympy
 
 
 @dataclass(frozen=True)
@@ -196,7 +196,7 @@ def time_ik_grid_solve(
 
     # Step 2: Time the solver initialization
     start_init = time.perf_counter()
-    ik_solver = IKSymbolic(model)
+    ik_solver = IKNumericSympy(model)
     end_init = time.perf_counter()
     solver_init_time = end_init - start_init
 
