@@ -173,7 +173,9 @@ def _ball_line_residual(
     closest_y = p1_y + t * seg_dy
 
     # Residual at closest point on segment
-    segment_collision = jnp.maximum(_ball_point_residual(closest_x, closest_y, params), 0.0)
+    segment_collision = jnp.maximum(
+        _ball_point_residual(closest_x, closest_y, params), 0.0
+    )
 
     return jnp.maximum(endpoint_collision, segment_collision)
 
@@ -662,7 +664,9 @@ class IKNumericJAX:
         target_angle = desired.ee_angle if lock_angle else 0.0
 
         # Weights
-        nogo_weight = 20.0 if self.has_nogo else 0.0
+        nogo_weight = 0.0
+        if self.has_nogo:
+            nogo_weight = 2.0 if self.use_line_collision else 20.0
 
         # Initial angles
         initial_thetas = jnp.array(state.current.joint_angles, dtype=jnp.float32)
@@ -765,8 +769,8 @@ if __name__ == "__main__":
         world=world,
         collision_geometry="line",
         max_iterations=200,
-        lr=0.01,
-        momentum=0.9,
+        lr=0.02,
+        momentum=0.1,
     )
 
     # Initial position (within joint limits)
