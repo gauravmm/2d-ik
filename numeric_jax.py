@@ -2,7 +2,6 @@
 """JAX-based numerical IK solver with JIT-compiled core optimization loop."""
 
 import time
-from dataclasses import dataclass
 from functools import partial
 from typing import Literal, NamedTuple, Optional, Tuple
 
@@ -12,6 +11,7 @@ from jax import lax
 
 from datamodel import (
     DesiredPosition,
+    IKReturn,
     Region,
     RegionBall,
     RegionHalfspace,
@@ -519,16 +519,6 @@ def _solve_ik_jit(
     )
 
 
-@dataclass
-class IKNumericJAXProfile:
-    """Profiling results from IKNumericJAX solver."""
-
-    solve_time_ms: float
-    iterations: int
-    converged: bool
-    initial_loss: float
-    final_loss: float
-    position_error: float
 
 
 class IKNumericJAX:
@@ -639,17 +629,15 @@ class IKNumericJAX:
         self,
         state: RobotState,
         desired: DesiredPosition,
-        profile: bool = False,
-    ) -> RobotState | Tuple[RobotState, IKNumericJAXProfile]:
+    ) -> IKReturn:
         """Solve IK for the desired position.
 
         Args:
             state: Current robot state.
             desired: Desired end effector position and optional angle.
-            profile: If True, return profiling information.
 
         Returns:
-            RobotState with solution, optionally with profiling info.
+            IKReturn containing the solution state and profiling information.
         """
         if state.model != self.model:
             raise ValueError("State model does not match IKNumericJAX model")
@@ -671,19 +659,18 @@ class IKNumericJAX:
         # Initial angles
         initial_thetas = jnp.array(state.current.joint_angles, dtype=jnp.float32)
 
-        # Compute initial loss for profiling
-        if profile:
-            initial_loss = float(
-                _compute_objective(
-                    initial_thetas,
-                    self.robot_params,
-                    target_x,
-                    target_y,
-                    nogo_weight,
-                    self.nogo_params if self.has_nogo else None,
-                    self.use_line_collision,
-                )
+        # Compute initial loss
+        initial_loss = float(
+            _compute_objective(
+                initial_thetas,
+                self.robot_params,
+                target_x,
+                target_y,
+                nogo_weight,
+                self.nogo_params if self.has_nogo else None,
+                self.use_line_collision,
             )
+        )
 
         # Start timing
         start_time = time.perf_counter()
@@ -715,25 +702,22 @@ class IKNumericJAX:
             RobotPosition(joint_angles=joint_angles), desired=desired
         )
 
-        if profile:
-            # Compute position error
-            ee_x, ee_y, _, _, _ = _forward_kinematics(
-                result.thetas,
-                self.robot_params.link_lengths,
-                self.robot_params.joint_origins,
-            )
-            position_error = float(
-                jnp.sqrt((ee_x - target_x) ** 2 + (ee_y - target_y) ** 2)
-            )
+        # Compute position error
+        ee_x, ee_y, _, _, _ = _forward_kinematics(
+            result.thetas,
+            self.robot_params.link_lengths,
+            self.robot_params.joint_origins,
+        )
+        position_error = float(
+            jnp.sqrt((ee_x - target_x) ** 2 + (ee_y - target_y) ** 2)
+        )
 
-            profile_result = IKNumericJAXProfile(
-                solve_time_ms=(end_time - start_time) * 1000,
-                iterations=int(result.iterations),
-                converged=bool(result.converged),
-                initial_loss=initial_loss,  # type: ignore
-                final_loss=float(result.final_loss),
-                position_error=position_error,
-            )
-            return result_state, profile_result
-
-        return result_state
+        return IKReturn(
+            state=result_state,
+            solve_time_ms=(end_time - start_time) * 1000,
+            iterations=int(result.iterations),
+            converged=bool(result.converged),
+            initial_loss=initial_loss,
+            final_loss=float(result.final_loss),
+            position_error=position_error,
+        )

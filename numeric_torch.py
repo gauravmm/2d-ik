@@ -1,13 +1,13 @@
 #!python3
 
 import time
-from dataclasses import dataclass
 from typing import Literal, Optional, Tuple
 
 import torch
 
 from datamodel import (
     DesiredPosition,
+    IKReturn,
     Region,
     RegionBall,
     RegionHalfspace,
@@ -219,16 +219,6 @@ def make_numeric_region(region: Region):
         raise TypeError(f"Unknown region type: {type(region)}")
 
 
-@dataclass
-class IKNumericTorchProfile:
-    """Profiling results from IKNumeric solver."""
-
-    solve_time_ms: float  # Total solve time in milliseconds
-    iterations: int  # Number of optimization iterations
-    converged: bool  # Whether the solver converged before max_iterations
-    initial_loss: float  # Loss at the start of optimization
-    final_loss: float  # Loss at the end of optimization
-    position_error: float  # Final Euclidean distance to target position
 
 
 class IKNumericTorch:
@@ -371,18 +361,15 @@ class IKNumericTorch:
         self,
         state: RobotState,
         desired: DesiredPosition,
-        profile: bool = False,
-    ) -> RobotState | Tuple[RobotState, IKNumericTorchProfile]:
+    ) -> IKReturn:
         """Solve IK for the desired position.
 
         Args:
             state: Current robot state.
             desired: Desired end effector position and optional angle.
-            profile: If True, return profiling information along with the result.
 
         Returns:
-            If profile is False: RobotState with the solution.
-            If profile is True: Tuple of (RobotState, IKNumericProfile).
+            IKReturn containing the solution state and profiling information.
         """
         if state.model != self.model:
             raise ValueError("State model does not match IKNumeric model")
@@ -467,22 +454,19 @@ class IKNumericTorch:
             RobotPosition(joint_angles=joint_angles), desired=desired
         )
 
-        if profile:
-            # Compute final position error
-            with torch.no_grad():
-                ee_x, ee_y, _, _ = self._forward_kinematics(thetas)
-                position_error = float(
-                    torch.sqrt((ee_x - target_x) ** 2 + (ee_y - target_y) ** 2)
-                )
-
-            profile_result = IKNumericTorchProfile(
-                solve_time_ms=(end_time - start_time) * 1000,
-                iterations=iterations_completed,
-                converged=converged,
-                initial_loss=initial_loss if initial_loss is not None else 0.0,
-                final_loss=final_loss,
-                position_error=position_error,
+        # Compute final position error
+        with torch.no_grad():
+            ee_x, ee_y, _, _ = self._forward_kinematics(thetas)
+            position_error = float(
+                torch.sqrt((ee_x - target_x) ** 2 + (ee_y - target_y) ** 2)
             )
-            return result_state, profile_result
 
-        return result_state
+        return IKReturn(
+            state=result_state,
+            solve_time_ms=(end_time - start_time) * 1000,
+            iterations=iterations_completed,
+            converged=converged,
+            initial_loss=initial_loss if initial_loss is not None else 0.0,
+            final_loss=final_loss,
+            position_error=position_error,
+        )

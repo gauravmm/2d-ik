@@ -1,5 +1,6 @@
 #!python3
 
+import time
 from typing import Literal, Tuple
 
 import sympy as sp
@@ -7,6 +8,7 @@ from scipy.optimize import minimize
 
 from datamodel import (
     DesiredPosition,
+    IKReturn,
     Region,
     RegionBall,
     RegionHalfspace,
@@ -417,7 +419,16 @@ class IKNumericSympy:
         self,
         state: RobotState,
         desired: DesiredPosition,
-    ) -> RobotState:
+    ) -> IKReturn:
+        """Solve IK for the desired position.
+
+        Args:
+            state: Current robot state.
+            desired: Desired end effector position and optional angle.
+
+        Returns:
+            IKReturn containing the solution state and profiling information.
+        """
         # Sanity-check that state.model is the same as self.model
         if state.model != self.model:
             raise ValueError("State model does not match IKSymbolic model")
@@ -472,12 +483,35 @@ class IKNumericSympy:
             (b[0], b[1]) if b is not None else (None, None) for b in self.joint_bounds
         ]
 
+        # Compute initial loss
+        initial_loss = float(objective(x0))
+
+        # Start timing
+        start_time = time.perf_counter()
+
         # Minimize distance to target using L-BFGS-B with analytical gradient and bounds
         result = minimize(objective, x0, method="L-BFGS-B", jac=gradient, bounds=bounds)
+
+        end_time = time.perf_counter()
 
         # Extract joint angles from solution
         joint_angles = tuple(float(angle) for angle in result.x)
 
-        return state.with_position(
+        result_state = state.with_position(
             RobotPosition(joint_angles=joint_angles), desired=desired
+        )
+
+        # Compute position error
+        positions = self.model.forward_kinematics(RobotPosition(joint_angles=joint_angles))
+        ee_pos = positions[-1]
+        position_error = ((ee_pos[0] - target_x) ** 2 + (ee_pos[1] - target_y) ** 2) ** 0.5
+
+        return IKReturn(
+            state=result_state,
+            solve_time_ms=(end_time - start_time) * 1000,
+            iterations=result.nit,
+            converged=result.success,
+            initial_loss=initial_loss,
+            final_loss=float(result.fun),
+            position_error=position_error,
         )

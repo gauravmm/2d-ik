@@ -13,12 +13,13 @@ numpy arrays for numerical operations.
 import math
 import time
 from dataclasses import dataclass
-from typing import Literal, Optional, Tuple
+from typing import Literal
 
 import numpy as np
 
 from datamodel import (
     DesiredPosition,
+    IKReturn,
     Region,
     RegionBall,
     RegionHalfspace,
@@ -196,16 +197,6 @@ def make_numpy_region(region: Region) -> NumpyRegion:
         raise TypeError(f"Unknown region type: {type(region)}")
 
 
-@dataclass
-class IKFabrikProfile:
-    """Profiling results from IKFabrik solver."""
-
-    solve_time_ms: float  # Total solve time in milliseconds
-    iterations: int  # Number of FABRIK iterations
-    converged: bool  # Whether the solver converged before max_iterations
-    initial_loss: float  # Position error at the start
-    final_loss: float  # Position error at the end
-    position_error: float  # Final Euclidean distance to target position
 
 
 class IKFabrik:
@@ -565,18 +556,15 @@ class IKFabrik:
         self,
         state: RobotState,
         desired: DesiredPosition,
-        profile: bool = False,
-    ) -> RobotState | Tuple[RobotState, IKFabrikProfile]:
+    ) -> IKReturn:
         """Solve IK for the desired position using FABRIK.
 
         Args:
             state: Current robot state.
             desired: Desired end effector position and optional angle.
-            profile: If True, return profiling information along with the result.
 
         Returns:
-            If profile is False: RobotState with the solution.
-            If profile is True: Tuple of (RobotState, IKFabrikProfile).
+            IKReturn containing the solution state and profiling information.
         """
         if state.model != self.model:
             raise ValueError("State model does not match IKFabrik model")
@@ -637,17 +625,14 @@ class IKFabrik:
             desired=desired,
         )
 
-        if profile:
-            final_loss = float(np.linalg.norm(positions[-1] - target))
+        final_loss = float(np.linalg.norm(positions[-1] - target))
 
-            profile_result = IKFabrikProfile(
-                solve_time_ms=(end_time - start_time) * 1000,
-                iterations=iterations_completed,
-                converged=converged,
-                initial_loss=initial_loss,
-                final_loss=final_loss,
-                position_error=final_loss,
-            )
-            return result_state, profile_result
-
-        return result_state
+        return IKReturn(
+            state=result_state,
+            solve_time_ms=(end_time - start_time) * 1000,
+            iterations=iterations_completed,
+            converged=converged,
+            initial_loss=initial_loss,
+            final_loss=final_loss,
+            position_error=final_loss,
+        )

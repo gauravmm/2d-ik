@@ -171,3 +171,16 @@ class RobotState:
             world=self.world,
             desired=desired or self.desired or None,
         )
+
+
+@dataclass
+class IKReturn:
+    """Unified return type for all IK solvers, containing the solution state and profiling information."""
+
+    state: RobotState  # The solved robot state
+    solve_time_ms: float  # Total solve time in milliseconds
+    iterations: int  # Number of optimization iterations
+    converged: bool  # Whether the solver converged before max_iterations
+    initial_loss: float  # Loss at the start of optimization
+    final_loss: float  # Loss at the end of optimization
+    position_error: float  # Final Euclidean distance to target position
