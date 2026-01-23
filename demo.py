@@ -129,11 +129,7 @@ def main():
     # Warm up JIT compilation for JAX solver
     if isinstance(ik_solver, IKNumericJAX):
         print("Warming up JIT compilation...")
-        _ = ik_solver(
-            current_state,
-            DesiredPosition(ee_position=(1.0, 1.0)),
-            profile=True,
-        )
+        _ = ik_solver(current_state, DesiredPosition(ee_position=(1.0, 1.0)))
         print("JIT compilation complete.")
 
     # Click callback that updates the target and solves IK
@@ -150,40 +146,21 @@ def main():
         # Solve IK (with profiling if supported)
         try:
             # sympy solver doesn't support profiling
-            if args.solver == "sympy":
-                solution_state = ik_solver(
-                    current_state,
-                    DesiredPosition(ee_position=(x, y), ee_angle=new_ee_angle),
-                )
-                solution = solution_state.current
-                print(f"Solution: {tuple(f'{a:.3f}' for a in solution.joint_angles)}")
-
-                # Compute position error manually
-                end_effector_positions = model.forward_kinematics(solution)
-                end_effector = end_effector_positions[-1]
-                error = math.sqrt(
-                    (end_effector[0] - x) ** 2 + (end_effector[1] - y) ** 2
-                )
-                print(f"Position error: {error:.6f}")
-            else:
-                result = ik_solver(
-                    current_state,
-                    DesiredPosition(ee_position=(x, y), ee_angle=new_ee_angle),
-                    profile=True,
-                )
-                assert isinstance(result, tuple)
-                solution_state, profile = result
-                solution = solution_state.current
-                print(f"Solution: {tuple(f'{a:.3f}' for a in solution.joint_angles)}")
-                print(f"Solve time: {profile.solve_time_ms:.2f}ms")
-                print(
-                    f"Iterations: {profile.iterations} (converged: {profile.converged})"
-                )
-                print(f"Loss: {profile.initial_loss:.6f} -> {profile.final_loss:.6f}")
-                print(f"Position error: {profile.position_error:.6f}")
+            result = ik_solver(
+                current_state,
+                DesiredPosition(ee_position=(x, y), ee_angle=new_ee_angle),
+            )
+            solution = result.state
+            print(
+                f"Solution: {tuple(f'{a:.3f}' for a in solution.current.joint_angles)}"
+            )
+            print(f"Solve time: {result.solve_time_ms:.2f}ms")
+            print(f"Iterations: {result.iterations} (converged: {result.converged})")
+            print(f"Loss: {result.initial_loss:.6f} -> {result.final_loss:.6f}")
+            print(f"Position error: {result.position_error:.6f}")
 
             # Update the visualization with the new solution
-            current_state = solution_state
+            current_state = solution
             viz.update(current_state)
 
         except Exception as e:
