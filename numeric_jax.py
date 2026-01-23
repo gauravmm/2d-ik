@@ -266,6 +266,41 @@ def _compute_nogo_penalty_point(
     return penalty
 
 
+def _compute_nogo_penalty_line(
+    joint_xs: Array, joint_ys: Array, nogo_params: NogoRegionParams
+) -> Array:
+    """Compute nogo penalty using line segment collision detection."""
+    penalty = jnp.float32(0.0)
+
+    # Check each link segment (from joint i to joint i+1)
+    for i in range(joint_xs.shape[0] - 1):
+        p1_x, p1_y = joint_xs[i], joint_ys[i]
+        p2_x, p2_y = joint_xs[i + 1], joint_ys[i + 1]
+
+        # Halfspaces
+        def halfspace_penalty(params):
+            residual = _halfspace_line_residual(p1_x, p1_y, p2_x, p2_y, params)
+            return residual**2
+
+        penalty = penalty + jnp.sum(jax.vmap(halfspace_penalty)(nogo_params.halfspaces))
+
+        # Balls
+        def ball_penalty(params):
+            residual = _ball_line_residual(p1_x, p1_y, p2_x, p2_y, params)
+            return residual**2
+
+        penalty = penalty + jnp.sum(jax.vmap(ball_penalty)(nogo_params.balls))
+
+        # Rectangles
+        def rect_penalty(params):
+            residual = _rectangle_line_residual(p1_x, p1_y, p2_x, p2_y, params)
+            return residual**2
+
+        penalty = penalty + jnp.sum(jax.vmap(rect_penalty)(nogo_params.rectangles))
+
+    return penalty
+
+
 def _compute_objective(
     thetas: Array,
     robot_params: RobotParams,
@@ -273,6 +308,7 @@ def _compute_objective(
     target_y: float,
     nogo_weight: float,
     nogo_params: Optional[NogoRegionParams],
+    use_line_collision: bool,
 ) -> Array:
     """Compute the IK objective function."""
     ee_x, ee_y, _, joint_xs, joint_ys = _forward_kinematics(
@@ -285,7 +321,11 @@ def _compute_objective(
     # Nogo penalty (always computed if nogo_params provided, weight of 0 disables it)
     # Note: nogo_params is None vs not-None is a static condition handled by has_nogo flag
     if nogo_params is not None:
-        nogo_penalty = _compute_nogo_penalty_point(joint_xs, joint_ys, nogo_params)
+        nogo_penalty = lax.cond(
+            use_line_collision,
+            lambda: _compute_nogo_penalty_line(joint_xs, joint_ys, nogo_params),
+            lambda: _compute_nogo_penalty_point(joint_xs, joint_ys, nogo_params),
+        )
         objective = objective + nogo_weight * nogo_penalty
 
     return objective
@@ -337,6 +377,7 @@ def _optimization_step(
     lock_angle: bool,
     nogo_weight: float,
     nogo_params: Optional[NogoRegionParams],
+    use_line_collision: bool,
     lr: float,
     momentum: float,
     tolerance: float,
@@ -350,6 +391,7 @@ def _optimization_step(
         target_y,
         nogo_weight,
         nogo_params,
+        use_line_collision,
     )
 
     # Update with momentum
@@ -379,7 +421,7 @@ def _optimization_step(
     )
 
 
-@partial(jax.jit, static_argnames=["max_iterations", "has_nogo"])
+@partial(jax.jit, static_argnames=["max_iterations", "has_nogo", "use_line_collision"])
 def _solve_ik_jit(
     initial_thetas: Array,
     robot_params: RobotParams,
@@ -389,6 +431,7 @@ def _solve_ik_jit(
     lock_angle: bool,
     nogo_weight: float,
     nogo_params: Optional[NogoRegionParams],
+    use_line_collision: bool,
     lr: float,
     momentum: float,
     tolerance: float,
@@ -405,6 +448,7 @@ def _solve_ik_jit(
         lock_angle: Whether to lock the end effector angle.
         nogo_weight: Weight for nogo zone penalty.
         nogo_params: Nogo region parameters (or None).
+        use_line_collision: Whether to use line collision (True) or point collision (False).
         lr: Learning rate.
         momentum: Momentum coefficient.
         tolerance: Convergence tolerance.
@@ -450,6 +494,7 @@ def _solve_ik_jit(
             lock_angle,
             nogo_weight,
             effective_nogo_params,
+            use_line_collision,
             lr,
             momentum,
             tolerance,
@@ -506,16 +551,12 @@ class IKNumericJAX:
             momentum: Momentum coefficient (0 = no momentum).
             max_iterations: Maximum optimization iterations.
             tolerance: Convergence tolerance on loss change.
-            collision_geometry: Only "point" is supported for JAX solver.
+            collision_geometry: "point" for joint-only collision, "line" for link segments.
         """
-        if collision_geometry != "point":
-            raise ValueError(
-                "JAX solver only supports point collision geometry for JIT compatibility"
-            )
-
         self.model = model
         self.n_joints = len(model.link_lengths)
         self.collision_geometry = collision_geometry
+        self.use_line_collision = collision_geometry == "line"
 
         # Optimization parameters
         self.lr = lr
@@ -636,6 +677,7 @@ class IKNumericJAX:
                     target_y,
                     nogo_weight,
                     self.nogo_params if self.has_nogo else None,
+                    self.use_line_collision,
                 )
             )
 
@@ -652,6 +694,7 @@ class IKNumericJAX:
             lock_angle,
             nogo_weight,
             self.nogo_params,
+            self.use_line_collision,
             self.lr,
             self.momentum,
             self.tolerance,
@@ -720,7 +763,7 @@ if __name__ == "__main__":
     ik_solver = IKNumericJAX(
         model,
         world=world,
-        collision_geometry="point",
+        collision_geometry="line",
         max_iterations=200,
         lr=0.01,
         momentum=0.9,
