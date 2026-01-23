@@ -14,6 +14,7 @@ from datamodel import (
     RobotState,
     WorldModel,
 )
+from numeric_jax import IKNumericJAX
 from visualization import RobotVisualizer
 
 
@@ -126,7 +127,7 @@ def main():
     viz = RobotVisualizer(current_state)
 
     # Warm up JIT compilation for JAX solver
-    if args.solver == "jax":
+    if isinstance(ik_solver, IKNumericJAX):
         print("Warming up JIT compilation...")
         _ = ik_solver(
             current_state,
@@ -160,7 +161,9 @@ def main():
                 # Compute position error manually
                 end_effector_positions = model.forward_kinematics(solution)
                 end_effector = end_effector_positions[-1]
-                error = math.sqrt((end_effector[0] - x) ** 2 + (end_effector[1] - y) ** 2)
+                error = math.sqrt(
+                    (end_effector[0] - x) ** 2 + (end_effector[1] - y) ** 2
+                )
                 print(f"Position error: {error:.6f}")
             else:
                 result = ik_solver(
@@ -173,7 +176,9 @@ def main():
                 solution = solution_state.current
                 print(f"Solution: {tuple(f'{a:.3f}' for a in solution.joint_angles)}")
                 print(f"Solve time: {profile.solve_time_ms:.2f}ms")
-                print(f"Iterations: {profile.iterations} (converged: {profile.converged})")
+                print(
+                    f"Iterations: {profile.iterations} (converged: {profile.converged})"
+                )
                 print(f"Loss: {profile.initial_loss:.6f} -> {profile.final_loss:.6f}")
                 print(f"Position error: {profile.position_error:.6f}")
 

@@ -1,6 +1,6 @@
 """Type stubs for sympy module."""
 
-from typing import Any, Callable, Sequence, TypeVar, Union, overload
+from typing import Any, Callable, Sequence, TypeVar, Union
 
 # Type variables for sympy expressions
 _Expr = TypeVar("_Expr", bound="Expr")

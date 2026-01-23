@@ -502,9 +502,13 @@ class IKNumericSympy:
         )
 
         # Compute position error
-        positions = self.model.forward_kinematics(RobotPosition(joint_angles=joint_angles))
+        positions = self.model.forward_kinematics(
+            RobotPosition(joint_angles=joint_angles)
+        )
         ee_pos = positions[-1]
-        position_error = ((ee_pos[0] - target_x) ** 2 + (ee_pos[1] - target_y) ** 2) ** 0.5
+        position_error = (
+            (ee_pos[0] - target_x) ** 2 + (ee_pos[1] - target_y) ** 2
+        ) ** 0.5
 
         return IKReturn(
             state=result_state,

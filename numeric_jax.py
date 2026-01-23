@@ -12,7 +12,6 @@ from jax import lax
 from datamodel import (
     DesiredPosition,
     IKReturn,
-    Region,
     RegionBall,
     RegionHalfspace,
     RegionRectangle,
@@ -75,7 +74,6 @@ def _forward_kinematics(
         Tuple of (ee_x, ee_y, ee_angle, joint_xs, joint_ys)
         where joint_xs/joint_ys are arrays of all joint positions including origin.
     """
-    n_joints = link_lengths.shape[0]
 
     def scan_fn(carry, inputs):
         x, y, cumulative_angle = carry
@@ -517,8 +515,6 @@ def _solve_ik_jit(
         converged=final_state.converged,
         final_loss=final_state.prev_loss,
     )
-
-
 
 
 class IKNumericJAX:

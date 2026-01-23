@@ -10,9 +10,7 @@ This implementation follows the interface pattern from symbolic.py but uses
 numpy arrays for numerical operations.
 """
 
-import math
 import time
-from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
@@ -195,8 +193,6 @@ def make_numpy_region(region: Region) -> NumpyRegion:
         return NumpyRegionRectangle(region)
     else:
         raise TypeError(f"Unknown region type: {type(region)}")
-
-
 
 
 class IKFabrik:

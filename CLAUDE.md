@@ -16,9 +16,9 @@ uv run python ...
 
 If you change more than a few lines of code, commit all changes you make with a short message.
 
-### Running Tests
-
 If you are running all tests, you should request the user to run them on your behalf.
+
+You can clean up imports using `uv run ruff check --fix .`
 
 ## Architecture
 
@@ -32,14 +32,9 @@ Three immutable dataclasses define the robot:
 
 **Forward kinematics** is implemented in `RobotModel.forward_kinematics()`, which takes a RobotPosition and returns a list of (x, y) tuples for each joint position (starting with base at origin).
 
-### IK Solver (symbolic.py)
+### IK Solvers
 
-**IKSymbolic** class implements inverse kinematics using symbolic mathematics:
-
-1. Uses SymPy to build symbolic forward kinematics equations
-2. Derives analytical gradient of combined objective function (position error + optional weighted angle error)
-3. Compiles symbolic expressions to fast numerical functions via `sp.lambdify`
-4. Optimizes using scipy's BFGS with analytical gradient
+The solvers are in fabrik.py, numeric_jax.py, numeric_sympy.py, and numeric_torch.py.
 
 **Angle constraints**: When `RobotState.desired_end_effector_angle` is set, the solver constrains the end effector orientation using a weighted angle error term (weight = 1.0e3). When None, only position is optimized.
 

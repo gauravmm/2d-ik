@@ -219,8 +219,6 @@ def make_numeric_region(region: Region):
         raise TypeError(f"Unknown region type: {type(region)}")
 
 
-
-
 class IKNumericTorch:
     """Implements a numerical solver for inverse kinematics using PyTorch autodiff."""
 
