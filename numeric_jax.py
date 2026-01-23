@@ -136,18 +136,8 @@ def _halfspace_line_residual(
 
     Returns the sum of clamped endpoint residuals (only positive contributions).
     """
-    normal_x, normal_y, anchor_x, anchor_y = params[0], params[1], params[2], params[3]
-
-    # Compute residuals at both endpoints
-    dx1 = p1_x - anchor_x
-    dy1 = p1_y - anchor_y
-    residual1 = normal_x * dx1 + normal_y * dy1
-
-    dx2 = p2_x - anchor_x
-    dy2 = p2_y - anchor_y
-    residual2 = normal_x * dx2 + normal_y * dy2
-
-    # Sum of clamped residuals (only penalize when inside)
+    residual1 = _halfspace_point_residual(p1_x, p1_y, params)
+    residual2 = _halfspace_point_residual(p2_x, p2_y, params)
     return jnp.maximum(residual1, 0.0) + jnp.maximum(residual2, 0.0)
 
 
@@ -158,19 +148,11 @@ def _ball_line_residual(
 
     Returns the maximum of endpoint collision and segment collision with the ball.
     """
-    center_x, center_y, radius = params[0], params[1], params[2]
+    center_x, center_y = params[0], params[1]
 
     # Check endpoint collisions
-    dx1 = p1_x - center_x
-    dy1 = p1_y - center_y
-    dist1 = jnp.sqrt(dx1**2 + dy1**2 + 1e-10)
-    residual1 = radius - dist1
-
-    dx2 = p2_x - center_x
-    dy2 = p2_y - center_y
-    dist2 = jnp.sqrt(dx2**2 + dy2**2 + 1e-10)
-    residual2 = radius - dist2
-
+    residual1 = _ball_point_residual(p1_x, p1_y, params)
+    residual2 = _ball_point_residual(p2_x, p2_y, params)
     endpoint_collision = jnp.maximum(residual1, 0.0) + jnp.maximum(residual2, 0.0)
 
     # Vector from p1 to p2
@@ -190,12 +172,8 @@ def _ball_line_residual(
     closest_x = p1_x + t * seg_dx
     closest_y = p1_y + t * seg_dy
 
-    # Distance from closest point to center
-    dist_x = center_x - closest_x
-    dist_y = center_y - closest_y
-    perpendicular_distance = jnp.sqrt(dist_x**2 + dist_y**2 + 1e-10)
-
-    segment_collision = jnp.maximum(radius - perpendicular_distance, 0.0)
+    # Residual at closest point on segment
+    segment_collision = jnp.maximum(_ball_point_residual(closest_x, closest_y, params), 0.0)
 
     return jnp.maximum(endpoint_collision, segment_collision)
 
@@ -210,18 +188,8 @@ def _rectangle_line_residual(
     left, right, bottom, top = params[0], params[1], params[2], params[3]
 
     # Check endpoint collisions
-    def point_residual(px: Array, py: Array) -> Array:
-        dist_to_left = px - left
-        dist_to_right = right - px
-        dist_to_bottom = py - bottom
-        dist_to_top = top - py
-        return jnp.minimum(
-            jnp.minimum(dist_to_left, dist_to_right),
-            jnp.minimum(dist_to_bottom, dist_to_top),
-        )
-
-    residual1 = point_residual(p1_x, p1_y)
-    residual2 = point_residual(p2_x, p2_y)
+    residual1 = _rectangle_point_residual(p1_x, p1_y, params)
+    residual2 = _rectangle_point_residual(p2_x, p2_y, params)
     endpoint_collision = jnp.maximum(residual1, 0.0) + jnp.maximum(residual2, 0.0)
 
     # Vector from p1 to p2
