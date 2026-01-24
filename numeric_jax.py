@@ -550,38 +550,6 @@ class IKNumericJAX(IKSolver):
         self.max_iterations = max_iterations
         self.tolerance = tolerance
 
-    def starting(self, state: RobotState) -> None:
-        """Warm up the JIT-compiled solver by running a dummy solve.
-
-        This triggers JAX JIT compilation so subsequent calls are fast.
-
-        Args:
-            state: The initial robot state.
-        """
-        if state.model != self.model:
-            raise ValueError("State model does not match IKNumericJAX model")
-
-        # Run a dummy solve to trigger JIT compilation
-        initial_thetas = jnp.array(state.current.joint_angles, dtype=jnp.float32)
-        # Use current end effector position as target for warmup
-        positions = state.get_joint_positions()
-        target_x, target_y = positions[-1]
-
-        _solve_ik_jit(
-            initial_thetas,
-            self.model,
-            target_x,
-            target_y,
-            0.0,  # target_angle
-            False,  # lock_angle
-            state.world.nogo,
-            self.use_line_collision,
-            self.lr,
-            self.momentum,
-            self.tolerance,
-            self.max_iterations,
-        )
-
     def __call__(
         self,
         state: RobotState,

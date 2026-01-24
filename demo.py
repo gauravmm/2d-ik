@@ -14,7 +14,6 @@ from datamodel import (
     RobotState,
     WorldModel,
 )
-from numeric_jax import IKNumericJAX
 from visualization import RobotVisualizer
 
 
@@ -125,12 +124,6 @@ def main():
 
     # Create visualizer
     viz = RobotVisualizer(current_state)
-
-    # Warm up JIT compilation for JAX solver
-    if isinstance(ik_solver, IKNumericJAX):
-        print("Warming up JIT compilation...")
-        _ = ik_solver(current_state, DesiredPosition(ee_position=(1.0, 1.0)))
-        print("JIT compilation complete.")
 
     # Click callback that updates the target and solves IK
     def on_click(x: float, y: float, btn: Literal["left", "right"]):

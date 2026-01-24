@@ -216,14 +216,3 @@ class IKSolver(ABC):
             IKReturn containing the solution state and profiling information.
         """
         ...
-
-    def starting(self, state: RobotState) -> None:
-        """Called when starting to use this solver with a given state.
-
-        This method can be overridden to perform initialization or warmup.
-        By default, it does nothing.
-
-        Args:
-            state: The initial robot state.
-        """
-        pass

@@ -17,6 +17,11 @@ dependencies = [
     { name = "torch" },
 ]
 
+[package.optional-dependencies]
+torch = [
+    { name = "torch" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "jax", specifier = ">=0.9.0" },
@@ -27,7 +32,9 @@ requires-dist = [
     { name = "scipy-stubs", specifier = ">=1.16.3.3" },
     { name = "sympy", specifier = ">=1.14.0" },
     { name = "torch", specifier = ">=2.9.1" },
+    { name = "torch", marker = "extra == 'torch'", specifier = ">=2.9.1" },
 ]
+provides-extras = ["torch"]
 
 [[package]]
 name = "colorama"
