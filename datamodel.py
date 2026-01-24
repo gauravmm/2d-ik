@@ -3,7 +3,7 @@
 import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Collection, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 #
 # Robot Model
@@ -16,7 +16,7 @@ class RobotModel:
 
     link_lengths: tuple[float, ...]  # Length of each link in the chain
     joint_origins: tuple[float, ...] = field(default=tuple())  # Initial angle offset
-    joint_limits: tuple[tuple[float, float] | None, ...] = field(
+    joint_limits: tuple[tuple[float, float], ...] = field(
         default=tuple()
     )  # Joint angle limits, set in joint space. These joint angle limits are relative to the joint origin
 
@@ -26,11 +26,23 @@ class RobotModel:
             raise ValueError(
                 f"Number of joint origins ({len(self.joint_origins)}) must match number of links ({len(self.link_lengths)})"
             )
+        if self.joint_limits and len(self.joint_limits) != len(self.link_lengths):
+            raise ValueError(
+                f"Number of joint limits ({len(self.joint_limits)}) must match number of links ({len(self.link_lengths)})"
+            )
 
         # If no joint origins specified, set them all to 0
         if not self.joint_origins:
             object.__setattr__(
                 self, "joint_origins", tuple(0.0 for _ in self.link_lengths)
+            )
+
+        # If no joint limits specified, set them all to (-inf, +inf)
+        if not self.joint_limits:
+            object.__setattr__(
+                self,
+                "joint_limits",
+                tuple((-math.inf, math.inf) for _ in self.link_lengths),
             )
 
     def forward_kinematics(self, position: "RobotPosition") -> List["Position"]:

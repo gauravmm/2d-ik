@@ -39,21 +39,17 @@ jax.tree_util.register_dataclass(
     data_fields=["left", "right", "bottom", "top"],
     meta_fields=[],
 )
+jax.tree_util.register_dataclass(
+    RobotModel,
+    data_fields=[],
+    meta_fields=["link_lengths", "joint_origins", "joint_limits"],
+)
 
 NOGO_PENALTY_LINE = 2.0
 NOGO_PENALTY_POINT = 20.0
 
 # Type alias for JAX arrays
 Array = jax.Array
-
-
-class RobotParams(NamedTuple):
-    """Static robot parameters for JIT compilation."""
-
-    link_lengths: Array
-    joint_origins: Array
-    joint_min: Array  # Joint minimum limits (use -inf for unconstrained)
-    joint_max: Array  # Joint maximum limits (use inf for unconstrained)
 
 
 class SolverState(NamedTuple):
@@ -244,59 +240,56 @@ def _rectangle_line_residual(
 
 
 def _compute_nogo_penalty_point(
-    joint_xs: Array, joint_ys: Array, nogo_regions: NogoRegions
+    joint_xs: Array, joint_ys: Array, nogo_regions: Tuple[Region, ...] | None
 ) -> Array:
     """Compute nogo penalty using point collision detection."""
     penalty = jnp.float32(0.0)
-    halfspaces, balls, rectangles = nogo_regions
+    if nogo_regions is None:
+        return penalty
 
     # Skip origin (index 0), check all other joint positions
     for i in range(1, joint_xs.shape[0]):
         px, py = joint_xs[i], joint_ys[i]
 
         # Halfspaces
-        for region in halfspaces:
-            residual = _halfspace_point_residual(px, py, region)
-            penalty = penalty + jnp.maximum(residual, 0.0) ** 2
+        for region in nogo_regions:
+            if isinstance(region, RegionHalfspace):
+                residual = _halfspace_point_residual(px, py, region)
+            elif isinstance(region, RegionBall):
+                residual = _ball_point_residual(px, py, region)
+            elif isinstance(region, RegionRectangle):
+                residual = _rectangle_point_residual(px, py, region)
+            else:
+                residual = 0.0
 
-        # Balls
-        for region in balls:
-            residual = _ball_point_residual(px, py, region)
-            penalty = penalty + jnp.maximum(residual, 0.0) ** 2
-
-        # Rectangles
-        for region in rectangles:
-            residual = _rectangle_point_residual(px, py, region)
             penalty = penalty + jnp.maximum(residual, 0.0) ** 2
 
     return penalty
 
 
 def _compute_nogo_penalty_line(
-    joint_xs: Array, joint_ys: Array, nogo_regions: NogoRegions
+    joint_xs: Array, joint_ys: Array, nogo_regions: Tuple[Region, ...] | None
 ) -> Array:
     """Compute nogo penalty using line segment collision detection."""
     penalty = jnp.float32(0.0)
-    halfspaces, balls, rectangles = nogo_regions
+    if nogo_regions is None:
+        return penalty
 
     # Check each link segment (from joint i to joint i+1)
     for i in range(joint_xs.shape[0] - 1):
         p1_x, p1_y = joint_xs[i], joint_ys[i]
         p2_x, p2_y = joint_xs[i + 1], joint_ys[i + 1]
 
-        # Halfspaces
-        for region in halfspaces:
-            residual = _halfspace_line_residual(p1_x, p1_y, p2_x, p2_y, region)
-            penalty = penalty + residual**2
+        for region in nogo_regions:
+            if isinstance(region, RegionHalfspace):
+                residual = _halfspace_line_residual(p1_x, p1_y, p2_x, p2_y, region)
+            elif isinstance(region, RegionBall):
+                residual = _ball_line_residual(p1_x, p1_y, p2_x, p2_y, region)
+            elif isinstance(region, RegionRectangle):
+                residual = _rectangle_line_residual(p1_x, p1_y, p2_x, p2_y, region)
+            else:
+                residual = 0.0
 
-        # Balls
-        for region in balls:
-            residual = _ball_line_residual(p1_x, p1_y, p2_x, p2_y, region)
-            penalty = penalty + residual**2
-
-        # Rectangles
-        for region in rectangles:
-            residual = _rectangle_line_residual(p1_x, p1_y, p2_x, p2_y, region)
             penalty = penalty + residual**2
 
     return penalty
@@ -304,15 +297,17 @@ def _compute_nogo_penalty_line(
 
 def _compute_objective(
     thetas: Array,
-    robot_params: RobotParams,
+    model: RobotModel,
     target_x: float,
     target_y: float,
     nogo_regions: Optional[Tuple[Region, ...]],  # Static
     use_line_collision: bool,  # Static
 ) -> Array:
     """Compute the IK objective function."""
+    link_lengths = jnp.array(model.link_lengths, dtype=jnp.float32)
+    joint_origins = jnp.array(model.joint_origins, dtype=jnp.float32)
     ee_x, ee_y, _, joint_xs, joint_ys = _forward_kinematics(
-        thetas, robot_params.link_lengths, robot_params.joint_origins
+        thetas, link_lengths, joint_origins
     )
 
     # Position error
@@ -336,7 +331,7 @@ def _compute_objective(
 
 def _set_last_joint_for_angle(
     thetas: Array,
-    robot_params: RobotParams,
+    model: RobotModel,
     target_angle: float,
 ) -> Array:
     """Set the last joint angle to achieve the desired end effector angle.
@@ -346,16 +341,16 @@ def _set_last_joint_for_angle(
         theta_last = target_angle - sum(theta_i + origin_i for i in 0..n-2) - origin_last
     """
     n_joints = thetas.shape[0]
+    joint_origins = jnp.array(model.joint_origins, dtype=jnp.float32)
+    joint_limits = model.joint_limits
 
     # Compute cumulative angle from all joints except the last
     cumulative_angle = jnp.float32(0.0)
     for i in range(n_joints - 1):
-        cumulative_angle = cumulative_angle + thetas[i] + robot_params.joint_origins[i]
+        cumulative_angle = cumulative_angle + thetas[i] + joint_origins[i]
 
     # Required last joint angle to achieve target
-    required_last = (
-        target_angle - cumulative_angle - robot_params.joint_origins[n_joints - 1]
-    )
+    required_last = target_angle - cumulative_angle - joint_origins[n_joints - 1]
 
     # Normalize to [-pi, pi]
     required_last = jnp.arctan2(jnp.sin(required_last), jnp.cos(required_last))
@@ -363,8 +358,8 @@ def _set_last_joint_for_angle(
     # Clamp to joint limits
     required_last = jnp.clip(
         required_last,
-        robot_params.joint_min[n_joints - 1],
-        robot_params.joint_max[n_joints - 1],
+        joint_limits[n_joints - 1][0],
+        joint_limits[n_joints - 1][1],
     )
 
     # Update thetas with new last joint angle
@@ -373,7 +368,7 @@ def _set_last_joint_for_angle(
 
 def _optimization_step(
     state: SolverState,
-    robot_params: RobotParams,
+    model: RobotModel,
     target_x: float,
     target_y: float,
     target_angle: float,
@@ -388,7 +383,7 @@ def _optimization_step(
     # Compute gradient
     loss, grad = jax.value_and_grad(_compute_objective)(
         state.thetas,
-        robot_params,
+        model,
         target_x,
         target_y,
         nogo_regions,
@@ -400,12 +395,14 @@ def _optimization_step(
     new_thetas = state.thetas + new_velocity
 
     # Clamp joint angles to limits
-    new_thetas = jnp.clip(new_thetas, robot_params.joint_min, robot_params.joint_max)
+    joint_min = jnp.array([lim[0] for lim in model.joint_limits], dtype=jnp.float32)
+    joint_max = jnp.array([lim[1] for lim in model.joint_limits], dtype=jnp.float32)
+    new_thetas = jnp.clip(new_thetas, joint_min, joint_max)
 
     # If angle locking is enabled, set the last joint to achieve the target angle
     new_thetas = lax.cond(
         lock_angle,
-        lambda t: _set_last_joint_for_angle(t, robot_params, target_angle),
+        lambda t: _set_last_joint_for_angle(t, model, target_angle),
         lambda t: t,
         new_thetas,
     )
@@ -426,14 +423,14 @@ def _optimization_step(
     jax.jit,
     static_argnames=[
         "max_iterations",
-        "robot_params",
+        "model",
         "use_line_collision",
         "nogo_regions",
     ],
 )
 def _solve_ik_jit(
     initial_thetas: Array,
-    robot_params: RobotParams,
+    model: RobotModel,
     target_x: float,
     target_y: float,
     target_angle: float,
@@ -449,7 +446,7 @@ def _solve_ik_jit(
 
     Args:
         initial_thetas: Initial joint angles.
-        robot_params: Static robot parameters.
+        model: Static robot model.
         target_x, target_y: Target end effector position.
         target_angle: Target end effector angle (used if lock_angle is True).
         lock_angle: Whether to lock the end effector angle.
@@ -464,14 +461,14 @@ def _solve_ik_jit(
         SolverResult with optimized joint angles.
     """
     # Clamp initial thetas to joint limits
-    initial_thetas = jnp.clip(
-        initial_thetas, robot_params.joint_min, robot_params.joint_max
-    )
+    joint_min = jnp.array([lim[0] for lim in model.joint_limits], dtype=jnp.float32)
+    joint_max = jnp.array([lim[1] for lim in model.joint_limits], dtype=jnp.float32)
+    initial_thetas = jnp.clip(initial_thetas, joint_min, joint_max)
 
     # If angle locking is enabled, set the last joint initially
     initial_thetas = lax.cond(
         lock_angle,
-        lambda t: _set_last_joint_for_angle(t, robot_params, target_angle),
+        lambda t: _set_last_joint_for_angle(t, model, target_angle),
         lambda t: t,
         initial_thetas,
     )
@@ -489,7 +486,7 @@ def _solve_ik_jit(
     def loop_body(state: SolverState) -> SolverState:
         return _optimization_step(
             state,
-            robot_params,
+            model,
             target_x,
             target_y,
             target_angle,
@@ -553,33 +550,6 @@ class IKNumericJAX(IKSolver):
         self.max_iterations = max_iterations
         self.tolerance = tolerance
 
-        # Build robot parameters for JIT
-        link_lengths = jnp.array(model.link_lengths, dtype=jnp.float32)
-        joint_origins = jnp.array(model.joint_origins, dtype=jnp.float32)
-
-        # Process joint limits
-        joint_min = []
-        joint_max = []
-        if model.joint_limits:
-            for limit in model.joint_limits:
-                if limit is not None:
-                    joint_min.append(limit[0])
-                    joint_max.append(limit[1])
-                else:
-                    joint_min.append(-jnp.inf)
-                    joint_max.append(jnp.inf)
-        # Pad if necessary
-        while len(joint_min) < self.n_joints:
-            joint_min.append(-jnp.inf)
-            joint_max.append(jnp.inf)
-
-        self.robot_params = RobotParams(
-            link_lengths=link_lengths,
-            joint_origins=joint_origins,
-            joint_min=jnp.array(joint_min, dtype=jnp.float32),
-            joint_max=jnp.array(joint_max, dtype=jnp.float32),
-        )
-
     def starting(self, state: RobotState) -> None:
         """Warm up the JIT-compiled solver by running a dummy solve.
 
@@ -599,7 +569,7 @@ class IKNumericJAX(IKSolver):
 
         _solve_ik_jit(
             initial_thetas,
-            self.robot_params,
+            self.model,
             target_x,
             target_y,
             0.0,  # target_angle
@@ -647,7 +617,7 @@ class IKNumericJAX(IKSolver):
         # Run JIT-compiled solver
         result = _solve_ik_jit(
             initial_thetas,
-            self.robot_params,
+            self.model,
             target_x,
             target_y,
             target_angle,
@@ -670,10 +640,12 @@ class IKNumericJAX(IKSolver):
         )
 
         # Compute position error
+        link_lengths = jnp.array(self.model.link_lengths, dtype=jnp.float32)
+        joint_origins = jnp.array(self.model.joint_origins, dtype=jnp.float32)
         ee_x, ee_y, _, _, _ = _forward_kinematics(
             result.thetas,
-            self.robot_params.link_lengths,
-            self.robot_params.joint_origins,
+            link_lengths,
+            joint_origins,
         )
         position_error = float(
             jnp.sqrt((ee_x - target_x) ** 2 + (ee_y - target_y) ** 2)
