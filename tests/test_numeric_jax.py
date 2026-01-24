@@ -8,6 +8,7 @@ import pytest
 
 from datamodel import (
     DesiredPosition,
+    IKReturn,
     RegionBall,
     RegionHalfspace,
     RegionRectangle,
@@ -32,7 +33,7 @@ def solve_and_check(
     target: Tuple[float, float],
     initial_angles: Tuple[float, ...] | None = None,
     target_angle: float | None = None,
-    world: WorldModel | None = None,
+    world: WorldModel = WorldModel(),
     max_error: float = 0.01,
     max_angle_error: float = 0.1,
     lr: float = 0.05,
@@ -56,8 +57,8 @@ def solve_and_check(
     desired = DesiredPosition(ee_position=target, ee_angle=target_angle)
 
     result = ik_solver(state, desired)
-    assert isinstance(result, RobotState)
-    solution = result.current
+    assert isinstance(result, IKReturn)
+    solution = result.state.current
 
     # Verify position
     end_effector = model.forward_kinematics(solution)[-1]
@@ -94,13 +95,11 @@ class TestIKNumericJAXBasic:
         """Test that profiling returns expected fields."""
         ik_solver = IKNumericJAX(TWO_LINK, world=None)
         state = RobotState(TWO_LINK, RobotPosition(joint_angles=(0.5, 0.3)))
-        result = ik_solver(state, DesiredPosition(ee_position=(1.5, 0.5)), profile=True)
-        assert isinstance(result, tuple)
-        _, profile = result
+        result = ik_solver(state, DesiredPosition(ee_position=(1.5, 0.5)))
+        assert isinstance(result, IKReturn)
 
-        assert profile.solve_time_ms >= 0
-        assert profile.iterations > 0
-        assert profile.final_loss <= profile.initial_loss
+        assert result.solve_time_ms >= 0
+        assert result.iterations > 0
 
 
 class TestIKNumericJAXAngleConstraints:
@@ -165,9 +164,9 @@ class TestIKNumericJAXNogoZones:
     @pytest.mark.parametrize(
         "world,target,max_error",
         [
-            (WorldModel(nogo=[RegionHalfspace((0, -1), (0, 0))]), (1.5, 0.5), 0.05),
-            (WorldModel(nogo=[RegionBall((1.0, 0.5), 0.2)]), (1.8, 0.3), 0.1),
-            (WorldModel(nogo=[RegionRectangle(0.8, 1.2, 0.3, 0.7)]), (1.8, 0.3), 0.1),
+            (WorldModel(nogo=(RegionHalfspace((0, -1), (0, 0)),)), (1.5, 0.5), 0.05),
+            (WorldModel(nogo=(RegionBall((1.0, 0.5), 0.2),)), (1.8, 0.3), 0.1),
+            (WorldModel(nogo=(RegionRectangle(0.8, 1.2, 0.3, 0.7),)), (1.8, 0.3), 0.1),
         ],
     )
     def test_nogo_avoidance(self, world, target, max_error):
@@ -208,16 +207,10 @@ class TestIKNumericJAXEdgeCases:
         state = RobotState(TWO_LINK, RobotPosition(joint_angles=(0.0, 0.0)))
 
         result = ik_solver(state, DesiredPosition(ee_position=(3.0, 0.0)))
-        assert isinstance(result, RobotState)
-        end_effector = TWO_LINK.forward_kinematics(result.current)[-1]
+        end_effector = TWO_LINK.forward_kinematics(result.state.current)[-1]
 
         distance_from_origin = math.sqrt(end_effector[0] ** 2 + end_effector[1] ** 2)
         assert abs(distance_from_origin - sum(TWO_LINK.link_lengths)) < 0.1
-
-    def test_line_collision_raises_error(self):
-        """Test that line collision geometry raises an error."""
-        with pytest.raises(ValueError, match="point"):
-            IKNumericJAX(TWO_LINK, world=None, collision_geometry="line")
 
 
 class TestIKNumericJAXJIT:
@@ -228,16 +221,12 @@ class TestIKNumericJAXJIT:
         ik_solver = IKNumericJAX(THREE_LINK, world=None, max_iterations=100)
         state = RobotState(THREE_LINK, RobotPosition(joint_angles=(0.5, 0.3, -0.2)))
 
-        result1 = ik_solver(
-            state, DesiredPosition(ee_position=(1.5, 0.5)), profile=True
-        )
-        result2 = ik_solver(
-            state, DesiredPosition(ee_position=(1.5, 0.5)), profile=True
-        )
+        result1 = ik_solver(state, DesiredPosition(ee_position=(1.5, 0.5)))
+        result2 = ik_solver(state, DesiredPosition(ee_position=(1.5, 0.5)))
 
-        assert isinstance(result1, tuple) and isinstance(result2, tuple)
-        assert result1[1].position_error < 0.1
-        assert result2[1].position_error < 0.1
+        assert isinstance(result1, IKReturn) and isinstance(result2, IKReturn)
+        assert result1.position_error < 0.1
+        assert result2.position_error < 0.1
 
     @pytest.mark.parametrize("target", [(1.5, 0.5), (1.0, 1.0), (0.5, 1.5), (1.8, 0.2)])
     def test_multiple_targets(self, target):

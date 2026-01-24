@@ -70,7 +70,7 @@ class NumpyRegionBall:
 
     def point_residual(self, point: np.ndarray) -> float:
         """Compute signed distance. Positive = inside (violation)."""
-        dist = np.linalg.norm(point - self.center)
+        dist = np.linalg.norm(point - self.center).astype(float)
         return self.radius - dist
 
     def project_point(self, point: np.ndarray) -> np.ndarray:
@@ -585,7 +585,7 @@ class IKFabrik(IKSolver):
         # Start profiling
         start_time = time.perf_counter()
 
-        initial_loss = np.linalg.norm(positions[-1] - target)
+        initial_loss: float = np.linalg.norm(positions[-1] - target).astype(float)
         converged = False
         iterations_completed = 0
 

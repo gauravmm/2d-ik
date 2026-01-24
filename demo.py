@@ -105,7 +105,7 @@ def main():
 
     # Create a world with nogo zones (narrow corridor)
     if args.no_nogo:
-        world = WorldModel(nogo=[])
+        world = WorldModel(nogo=())
     else:
         nogo = (
             RegionHalfspace((0, -1), (0, -0.2)),
