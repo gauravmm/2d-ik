@@ -153,7 +153,10 @@ def main():
             )
             print(f"Solve time: {result.solve_time_ms:.2f}ms")
             print(f"Iterations: {result.iterations} (converged: {result.converged})")
-            print(f"Loss: {result.initial_loss:.6f} -> {result.final_loss:.6f}")
+            if result.initial_loss < 0:
+                print(f"Loss: {result.final_loss:.6f}")
+            else:
+                print(f"Loss: {result.initial_loss:.6f} -> {result.final_loss:.6f}")
             print(f"Position error: {result.position_error:.6f}")
 
             # Update the visualization with the new solution
