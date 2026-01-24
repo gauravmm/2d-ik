@@ -14,7 +14,6 @@ from datamodel import (
     RobotState,
     WorldModel,
 )
-from numeric_jax import IKNumericJAX
 from visualization import RobotVisualizer
 
 
@@ -106,13 +105,13 @@ def main():
 
     # Create a world with nogo zones (narrow corridor)
     if args.no_nogo:
-        world = WorldModel(nogo=[])
+        world = WorldModel(nogo=())
     else:
-        nogo = [
+        nogo = (
             RegionHalfspace((0, -1), (0, -0.2)),
             RegionRectangle(0.5, 10.0, -10.0, 0.6),
             RegionRectangle(0.5, 10.0, 1.2, 5.0),
-        ]
+        )
         world = WorldModel(nogo=nogo)
 
     # Create the IK solver
@@ -125,12 +124,6 @@ def main():
 
     # Create visualizer
     viz = RobotVisualizer(current_state)
-
-    # Warm up JIT compilation for JAX solver
-    if isinstance(ik_solver, IKNumericJAX):
-        print("Warming up JIT compilation...")
-        _ = ik_solver(current_state, DesiredPosition(ee_position=(1.0, 1.0)))
-        print("JIT compilation complete.")
 
     # Click callback that updates the target and solves IK
     def on_click(x: float, y: float, btn: Literal["left", "right"]):
