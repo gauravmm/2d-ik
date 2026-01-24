@@ -108,11 +108,11 @@ def main():
     if args.no_nogo:
         world = WorldModel(nogo=[])
     else:
-        nogo = [
+        nogo = (
             RegionHalfspace((0, -1), (0, -0.2)),
             RegionRectangle(0.5, 10.0, -10.0, 0.6),
             RegionRectangle(0.5, 10.0, 1.2, 5.0),
-        ]
+        )
         world = WorldModel(nogo=nogo)
 
     # Create the IK solver
