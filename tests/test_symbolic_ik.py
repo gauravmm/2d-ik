@@ -45,12 +45,7 @@ def test_simple_two_link():
     )
     print(f"Position error: {error:.6f}")
 
-    if error < 1e-3:
-        print("✓ Test 1 passed!\n")
-        return True
-    else:
-        print("✗ Test 1 failed - position error too large\n")
-        return False
+    assert error < 1e-3
 
 
 def test_three_link_robot():
@@ -91,12 +86,7 @@ def test_three_link_robot():
     )
     print(f"Position error: {error:.6f}")
 
-    if error < 1e-3:
-        print("✓ Test 2 passed!\n")
-        return True
-    else:
-        print("✗ Test 2 failed - position error too large\n")
-        return False
+    assert error < 1e-3
 
 
 def test_unreachable_target():
@@ -143,22 +133,4 @@ def test_unreachable_target():
     print(f"Distance from origin: {distance_from_origin:.6f}")
 
     # Should be at max reach (arms fully extended)
-    if abs(distance_from_origin - max_reach) < 1e-2:
-        print("✓ Test 3 passed! (Robot extended to max reach)\n")
-        return True
-    else:
-        print("✗ Test 3 failed - robot not at max reach\n")
-        return False
-
-
-if __name__ == "__main__":
-    test_results: List[bool] = []
-    test_results.append(test_simple_two_link())
-    test_results.append(test_three_link_robot())
-    test_results.append(test_unreachable_target())
-
-    print("=" * 60)
-    print(f"Results: {sum(test_results)}/{len(test_results)} tests passed")
-    print("=" * 60)
-
-    exit(0 if all(test_results) else 1)
+    assert abs(distance_from_origin - max_reach) < 1e-2
