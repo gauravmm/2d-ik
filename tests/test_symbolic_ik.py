@@ -17,7 +17,7 @@ def test_simple_two_link():
     model = RobotModel(link_lengths=(1.0, 1.0))
 
     # Create the IK solver
-    ik_solver = IKNumericSympy(model)
+    ik_solver = IKNumericSympy(model, None)
 
     # Start from a known configuration
     initial_position = RobotPosition(joint_angles=(0.0, 0.0))
@@ -31,7 +31,7 @@ def test_simple_two_link():
     print(f"Initial joint angles: {initial_position.joint_angles}")
 
     solution_state = ik_solver(state, DesiredPosition(ee_position=target))
-    solution = solution_state.current
+    solution = solution_state.state.current
     print(f"Solution joint angles: {solution.joint_angles}")
 
     # Verify the solution by computing forward kinematics
@@ -63,7 +63,7 @@ def test_three_link_robot():
     model = RobotModel(link_lengths=(1.0, 0.8, 0.6))
 
     # Create the IK solver
-    ik_solver = IKNumericSympy(model)
+    ik_solver = IKNumericSympy(model, None)
 
     # Start from a configuration
     initial_position = RobotPosition(joint_angles=(0.0, math.pi / 4, -math.pi / 4))
@@ -77,7 +77,7 @@ def test_three_link_robot():
     print(f"Initial joint angles: {initial_position.joint_angles}")
 
     solution_state = ik_solver(state, DesiredPosition(ee_position=target))
-    solution = solution_state.current
+    solution = solution_state.state.current
     print(f"Solution joint angles: {solution.joint_angles}")
 
     # Verify the solution
@@ -109,7 +109,7 @@ def test_unreachable_target():
     model = RobotModel(link_lengths=(1.0, 1.0))
 
     # Create the IK solver
-    ik_solver = IKNumericSympy(model)
+    ik_solver = IKNumericSympy(model, None)
 
     # Start from a configuration
     initial_position = RobotPosition(joint_angles=(0.0, 0.0))
@@ -124,7 +124,7 @@ def test_unreachable_target():
     print(f"Initial joint angles: {initial_position.joint_angles}")
 
     solution_state = ik_solver(state, DesiredPosition(ee_position=target))
-    solution = solution_state.current
+    solution = solution_state.state.current
     print(f"Solution joint angles: {solution.joint_angles}")
 
     # Verify the solution

@@ -109,6 +109,18 @@ class RegionHalfspace:
     normal: Tuple[float, float]  # Normal vector pointing inward
     anchor: Tuple[float, float]  # Point on the boundary plane
 
+    def point(self, p: Tuple[float, float]) -> bool:
+        """Check if a point collides with (is inside) this halfspace."""
+        dx = p[0] - self.anchor[0]
+        dy = p[1] - self.anchor[1]
+        return self.normal[0] * dx + self.normal[1] * dy >= 0
+
+    def line(self, segment: Tuple[Tuple[float, float], Tuple[float, float]]) -> bool:
+        """Check if a line segment collides with (intersects or is inside) this halfspace."""
+        p1, p2 = segment
+        # If either endpoint is inside, there's a collision
+        return self.point(p1) or self.point(p2)
+
 
 @dataclass(frozen=True)
 class RegionBall:
@@ -119,6 +131,40 @@ class RegionBall:
 
     center: Tuple[float, float]  # Center of the ball
     radius: float  # Radius of the ball
+
+    def point(self, p: Tuple[float, float]) -> bool:
+        """Check if a point collides with (is inside) this ball."""
+        dx = p[0] - self.center[0]
+        dy = p[1] - self.center[1]
+        return dx * dx + dy * dy <= self.radius * self.radius
+
+    def line(self, segment: Tuple[Tuple[float, float], Tuple[float, float]]) -> bool:
+        """Check if a line segment collides with (intersects or is inside) this ball."""
+        p1, p2 = segment
+        # Check endpoints first
+        if self.point(p1) or self.point(p2):
+            return True
+
+        # Find closest point on segment to center
+        seg_dx = p2[0] - p1[0]
+        seg_dy = p2[1] - p1[1]
+        seg_len_sq = seg_dx * seg_dx + seg_dy * seg_dy
+
+        if seg_len_sq == 0:
+            # Degenerate segment (point)
+            return self.point(p1)
+
+        # Project center onto line, clamped to segment [0, 1]
+        to_center_x = self.center[0] - p1[0]
+        to_center_y = self.center[1] - p1[1]
+        t = (to_center_x * seg_dx + to_center_y * seg_dy) / seg_len_sq
+        t = max(0.0, min(1.0, t))
+
+        # Closest point on segment
+        closest_x = p1[0] + t * seg_dx
+        closest_y = p1[1] + t * seg_dy
+
+        return self.point((closest_x, closest_y))
 
 
 @dataclass(frozen=True)
@@ -143,6 +189,48 @@ class RegionRectangle:
             raise ValueError(
                 f"bottom ({self.bottom}) must be less than top ({self.top})"
             )
+
+    def point(self, p: Tuple[float, float]) -> bool:
+        """Check if a point collides with (is inside) this rectangle."""
+        return self.left <= p[0] <= self.right and self.bottom <= p[1] <= self.top
+
+    def line(self, segment: Tuple[Tuple[float, float], Tuple[float, float]]) -> bool:
+        """Check if a line segment collides with (intersects or is inside) this rectangle."""
+        p1, p2 = segment
+        # Check endpoints first
+        if self.point(p1) or self.point(p2):
+            return True
+
+        # Check if segment intersects any of the four edges
+        # Using parametric line-segment intersection
+        dx = p2[0] - p1[0]
+        dy = p2[1] - p1[1]
+
+        # Check intersection with each edge
+        def intersects_vertical_edge(edge_x: float) -> bool:
+            if dx == 0:
+                return False
+            t = (edge_x - p1[0]) / dx
+            if 0 <= t <= 1:
+                y_at_edge = p1[1] + t * dy
+                return self.bottom <= y_at_edge <= self.top
+            return False
+
+        def intersects_horizontal_edge(edge_y: float) -> bool:
+            if dy == 0:
+                return False
+            t = (edge_y - p1[1]) / dy
+            if 0 <= t <= 1:
+                x_at_edge = p1[0] + t * dx
+                return self.left <= x_at_edge <= self.right
+            return False
+
+        return (
+            intersects_vertical_edge(self.left)
+            or intersects_vertical_edge(self.right)
+            or intersects_horizontal_edge(self.bottom)
+            or intersects_horizontal_edge(self.top)
+        )
 
 
 Region = RegionHalfspace | RegionBall | RegionRectangle
