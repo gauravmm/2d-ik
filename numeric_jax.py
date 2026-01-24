@@ -22,6 +22,8 @@ from datamodel import (
     WorldModel,
 )
 
+NOGO_PENALTY_LINE = 2.0
+NOGO_PENALTY_POINT = 20.0
 
 # Type alias for JAX arrays
 Array = jax.Array
@@ -307,7 +309,6 @@ def _compute_objective(
     robot_params: RobotParams,
     target_x: float,
     target_y: float,
-    nogo_weight: float,
     nogo_params: Optional[NogoRegionParams],
     use_line_collision: bool,
 ) -> Array:
@@ -324,10 +325,12 @@ def _compute_objective(
     if nogo_params is not None:
         nogo_penalty = lax.cond(
             use_line_collision,
-            lambda: _compute_nogo_penalty_line(joint_xs, joint_ys, nogo_params),
-            lambda: _compute_nogo_penalty_point(joint_xs, joint_ys, nogo_params),
+            lambda: NOGO_PENALTY_LINE
+            * _compute_nogo_penalty_line(joint_xs, joint_ys, nogo_params),
+            lambda: NOGO_PENALTY_POINT
+            * _compute_nogo_penalty_point(joint_xs, joint_ys, nogo_params),
         )
-        objective = objective + nogo_weight * nogo_penalty
+        objective = objective + nogo_penalty
 
     return objective
 
@@ -376,7 +379,6 @@ def _optimization_step(
     target_y: float,
     target_angle: float,
     lock_angle: bool,
-    nogo_weight: float,
     nogo_params: Optional[NogoRegionParams],
     use_line_collision: bool,
     lr: float,
@@ -390,7 +392,6 @@ def _optimization_step(
         robot_params,
         target_x,
         target_y,
-        nogo_weight,
         nogo_params,
         use_line_collision,
     )
@@ -422,7 +423,15 @@ def _optimization_step(
     )
 
 
-@partial(jax.jit, static_argnames=["max_iterations", "has_nogo", "use_line_collision"])
+@partial(
+    jax.jit,
+    static_argnames=[
+        "max_iterations",
+        "robot_params",
+        "use_line_collision",
+        "nogo_params",
+    ],
+)
 def _solve_ik_jit(
     initial_thetas: Array,
     robot_params: RobotParams,
@@ -430,14 +439,12 @@ def _solve_ik_jit(
     target_y: float,
     target_angle: float,
     lock_angle: bool,
-    nogo_weight: float,
     nogo_params: Optional[NogoRegionParams],
     use_line_collision: bool,
     lr: float,
     momentum: float,
     tolerance: float,
     max_iterations: int,
-    has_nogo: bool,
 ) -> SolverResult:
     """JIT-compiled IK solver core.
 
@@ -447,21 +454,16 @@ def _solve_ik_jit(
         target_x, target_y: Target end effector position.
         target_angle: Target end effector angle (used if lock_angle is True).
         lock_angle: Whether to lock the end effector angle.
-        nogo_weight: Weight for nogo zone penalty.
         nogo_params: Nogo region parameters (or None).
         use_line_collision: Whether to use line collision (True) or point collision (False).
         lr: Learning rate.
         momentum: Momentum coefficient.
         tolerance: Convergence tolerance.
         max_iterations: Maximum iterations.
-        has_nogo: Whether nogo zones are present (static for JIT).
 
     Returns:
         SolverResult with optimized joint angles.
     """
-    # Use nogo_params only if has_nogo is True
-    effective_nogo_params = nogo_params if has_nogo else None
-
     # Clamp initial thetas to joint limits
     initial_thetas = jnp.clip(
         initial_thetas, robot_params.joint_min, robot_params.joint_max
@@ -493,8 +495,7 @@ def _solve_ik_jit(
             target_y,
             target_angle,
             lock_angle,
-            nogo_weight,
-            effective_nogo_params,
+            nogo_params,
             use_line_collision,
             lr,
             momentum,
@@ -581,10 +582,8 @@ class IKNumericJAX(IKSolver):
         )
 
         # Build nogo parameters
-        self.has_nogo = world is not None and len(world.nogo) > 0
         self.nogo_params: Optional[NogoRegionParams] = None
-
-        if self.has_nogo and world is not None:
+        if world is not None:
             halfspaces = []
             balls = []
             rectangles = []
@@ -635,10 +634,6 @@ class IKNumericJAX(IKSolver):
 
         # Run a dummy solve to trigger JIT compilation
         initial_thetas = jnp.array(state.current.joint_angles, dtype=jnp.float32)
-        nogo_weight = 0.0
-        if self.has_nogo:
-            nogo_weight = 2.0 if self.use_line_collision else 20.0
-
         # Use current end effector position as target for warmup
         positions = state.get_joint_positions()
         target_x, target_y = positions[-1]
@@ -650,14 +645,12 @@ class IKNumericJAX(IKSolver):
             target_y,
             0.0,  # target_angle
             False,  # lock_angle
-            nogo_weight,
             self.nogo_params,
             self.use_line_collision,
             self.lr,
             self.momentum,
             self.tolerance,
             self.max_iterations,
-            self.has_nogo,
         )
 
     def __call__(
@@ -686,11 +679,6 @@ class IKNumericJAX(IKSolver):
         lock_angle = desired.ee_angle is not None
         target_angle = desired.ee_angle if lock_angle else 0.0
 
-        # Weights
-        nogo_weight = 0.0
-        if self.has_nogo:
-            nogo_weight = 2.0 if self.use_line_collision else 20.0
-
         # Initial angles
         initial_thetas = jnp.array(state.current.joint_angles, dtype=jnp.float32)
 
@@ -701,8 +689,7 @@ class IKNumericJAX(IKSolver):
                 self.robot_params,
                 target_x,
                 target_y,
-                nogo_weight,
-                self.nogo_params if self.has_nogo else None,
+                self.nogo_params,
                 self.use_line_collision,
             )
         )
@@ -718,14 +705,12 @@ class IKNumericJAX(IKSolver):
             target_y,
             target_angle,
             lock_angle,
-            nogo_weight,
             self.nogo_params,
             self.use_line_collision,
             self.lr,
             self.momentum,
             self.tolerance,
             self.max_iterations,
-            self.has_nogo,
         )
 
         end_time = time.perf_counter()
