@@ -64,6 +64,10 @@ def create_solver(
             max_iterations=100,
             tolerance=1e-6,
         )
+    elif solver_type == "symbolic":
+        from symbolic import IKSymbolic
+
+        return IKSymbolic(model, world=world)
     else:
         raise ValueError(f"Unknown solver type: {solver_type}")
 
@@ -76,7 +80,7 @@ def main():
     parser.add_argument(
         "--solver",
         "-s",
-        choices=["jax", "torch", "sympy", "fabrik"],
+        choices=["jax", "torch", "sympy", "fabrik", "symbolic"],
         default="jax",
         help="Solver backend to use",
     )
