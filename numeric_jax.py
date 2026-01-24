@@ -22,6 +22,23 @@ from datamodel import (
     WorldModel,
 )
 
+# Register dataclasses as JAX PyTree nodes
+jax.tree_util.register_dataclass(
+    RegionHalfspace,
+    data_fields=["normal", "anchor"],
+    meta_fields=[],
+)
+jax.tree_util.register_dataclass(
+    RegionBall,
+    data_fields=["center", "radius"],
+    meta_fields=[],
+)
+jax.tree_util.register_dataclass(
+    RegionRectangle,
+    data_fields=["left", "right", "bottom", "top"],
+    meta_fields=[],
+)
+
 NOGO_PENALTY_LINE = 2.0
 NOGO_PENALTY_POINT = 20.0
 
@@ -36,17 +53,6 @@ class RobotParams(NamedTuple):
     joint_origins: Array
     joint_min: Array  # Joint minimum limits (use -inf for unconstrained)
     joint_max: Array  # Joint maximum limits (use inf for unconstrained)
-
-
-class NogoRegionParams(NamedTuple):
-    """Parameters for nogo regions, stored as arrays for JIT compatibility."""
-
-    # Halfspace regions: (n_halfspaces, 4) - [normal_x, normal_y, anchor_x, anchor_y]
-    halfspaces: Array
-    # Ball regions: (n_balls, 3) - [center_x, center_y, radius]
-    balls: Array
-    # Rectangle regions: (n_rects, 4) - [left, right, bottom, top]
-    rectangles: Array
 
 
 class SolverState(NamedTuple):
@@ -100,30 +106,31 @@ def _forward_kinematics(
     return ee_x, ee_y, ee_angle, joint_xs, joint_ys
 
 
-def _halfspace_point_residual(point_x: Array, point_y: Array, params: Array) -> Array:
+def _halfspace_point_residual(
+    point_x: Array, point_y: Array, region: RegionHalfspace
+) -> Array:
     """Compute halfspace residual for a point. Positive = inside."""
-    normal_x, normal_y, anchor_x, anchor_y = params[0], params[1], params[2], params[3]
-    dx = point_x - anchor_x
-    dy = point_y - anchor_y
-    return normal_x * dx + normal_y * dy
+    dx = point_x - region.anchor[0]
+    dy = point_y - region.anchor[1]
+    return region.normal[0] * dx + region.normal[1] * dy
 
 
-def _ball_point_residual(point_x: Array, point_y: Array, params: Array) -> Array:
+def _ball_point_residual(point_x: Array, point_y: Array, region: RegionBall) -> Array:
     """Compute ball residual for a point. Positive = inside."""
-    center_x, center_y, radius = params[0], params[1], params[2]
-    dx = point_x - center_x
-    dy = point_y - center_y
+    dx = point_x - region.center[0]
+    dy = point_y - region.center[1]
     distance = jnp.sqrt(dx**2 + dy**2 + 1e-10)
-    return radius - distance
+    return region.radius - distance
 
 
-def _rectangle_point_residual(point_x: Array, point_y: Array, params: Array) -> Array:
+def _rectangle_point_residual(
+    point_x: Array, point_y: Array, region: RegionRectangle
+) -> Array:
     """Compute rectangle residual for a point. Positive = inside."""
-    left, right, bottom, top = params[0], params[1], params[2], params[3]
-    dist_to_left = point_x - left
-    dist_to_right = right - point_x
-    dist_to_bottom = point_y - bottom
-    dist_to_top = top - point_y
+    dist_to_left = point_x - region.left
+    dist_to_right = region.right - point_x
+    dist_to_bottom = point_y - region.bottom
+    dist_to_top = region.top - point_y
     return jnp.minimum(
         jnp.minimum(dist_to_left, dist_to_right),
         jnp.minimum(dist_to_bottom, dist_to_top),
@@ -131,29 +138,29 @@ def _rectangle_point_residual(point_x: Array, point_y: Array, params: Array) -> 
 
 
 def _halfspace_line_residual(
-    p1_x: Array, p1_y: Array, p2_x: Array, p2_y: Array, params: Array
+    p1_x: Array, p1_y: Array, p2_x: Array, p2_y: Array, region: RegionHalfspace
 ) -> Array:
     """Compute halfspace residual for a line segment. Positive = inside (violation).
 
     Returns the sum of clamped endpoint residuals (only positive contributions).
     """
-    residual1 = _halfspace_point_residual(p1_x, p1_y, params)
-    residual2 = _halfspace_point_residual(p2_x, p2_y, params)
+    residual1 = _halfspace_point_residual(p1_x, p1_y, region)
+    residual2 = _halfspace_point_residual(p2_x, p2_y, region)
     return jnp.maximum(residual1, 0.0) + jnp.maximum(residual2, 0.0)
 
 
 def _ball_line_residual(
-    p1_x: Array, p1_y: Array, p2_x: Array, p2_y: Array, params: Array
+    p1_x: Array, p1_y: Array, p2_x: Array, p2_y: Array, region: RegionBall
 ) -> Array:
     """Compute ball residual for a line segment. Positive = inside (violation).
 
     Returns the maximum of endpoint collision and segment collision with the ball.
     """
-    center_x, center_y = params[0], params[1]
+    center_x, center_y = region.center[0], region.center[1]
 
     # Check endpoint collisions
-    residual1 = _ball_point_residual(p1_x, p1_y, params)
-    residual2 = _ball_point_residual(p2_x, p2_y, params)
+    residual1 = _ball_point_residual(p1_x, p1_y, region)
+    residual2 = _ball_point_residual(p2_x, p2_y, region)
     endpoint_collision = jnp.maximum(residual1, 0.0) + jnp.maximum(residual2, 0.0)
 
     # Vector from p1 to p2
@@ -175,24 +182,24 @@ def _ball_line_residual(
 
     # Residual at closest point on segment
     segment_collision = jnp.maximum(
-        _ball_point_residual(closest_x, closest_y, params), 0.0
+        _ball_point_residual(closest_x, closest_y, region), 0.0
     )
 
     return jnp.maximum(endpoint_collision, segment_collision)
 
 
 def _rectangle_line_residual(
-    p1_x: Array, p1_y: Array, p2_x: Array, p2_y: Array, params: Array
+    p1_x: Array, p1_y: Array, p2_x: Array, p2_y: Array, region: RegionRectangle
 ) -> Array:
     """Compute rectangle residual for a line segment. Positive = inside (violation).
 
     Returns the maximum of endpoint collision and edge intersection collision.
     """
-    left, right, bottom, top = params[0], params[1], params[2], params[3]
+    left, right, bottom, top = region.left, region.right, region.bottom, region.top
 
     # Check endpoint collisions
-    residual1 = _rectangle_point_residual(p1_x, p1_y, params)
-    residual2 = _rectangle_point_residual(p2_x, p2_y, params)
+    residual1 = _rectangle_point_residual(p1_x, p1_y, region)
+    residual2 = _rectangle_point_residual(p2_x, p2_y, region)
     endpoint_collision = jnp.maximum(residual1, 0.0) + jnp.maximum(residual2, 0.0)
 
     # Vector from p1 to p2
@@ -201,7 +208,7 @@ def _rectangle_line_residual(
 
     # Helper to compute edge intersection score
     def edge_intersection_score(
-        t: Array, edge_coord: Array, edge_min: Array, edge_max: Array
+        t: Array, edge_coord: Array, edge_min: float, edge_max: float
     ) -> Array:
         # Check t in [0, 1]
         t_valid = jnp.minimum(t, 1.0 - t)
@@ -236,44 +243,40 @@ def _rectangle_line_residual(
 
 
 def _compute_nogo_penalty_point(
-    joint_xs: Array, joint_ys: Array, nogo_params: NogoRegionParams
+    joint_xs: Array, joint_ys: Array, nogo_regions: NogoRegions
 ) -> Array:
     """Compute nogo penalty using point collision detection."""
     penalty = jnp.float32(0.0)
+    halfspaces, balls, rectangles = nogo_regions
 
     # Skip origin (index 0), check all other joint positions
     for i in range(1, joint_xs.shape[0]):
         px, py = joint_xs[i], joint_ys[i]
 
         # Halfspaces
-        def halfspace_penalty(params):
-            residual = _halfspace_point_residual(px, py, params)
-            return jnp.maximum(residual, 0.0) ** 2
-
-        penalty = penalty + jnp.sum(jax.vmap(halfspace_penalty)(nogo_params.halfspaces))
+        for region in halfspaces:
+            residual = _halfspace_point_residual(px, py, region)
+            penalty = penalty + jnp.maximum(residual, 0.0) ** 2
 
         # Balls
-        def ball_penalty(params):
-            residual = _ball_point_residual(px, py, params)
-            return jnp.maximum(residual, 0.0) ** 2
-
-        penalty = penalty + jnp.sum(jax.vmap(ball_penalty)(nogo_params.balls))
+        for region in balls:
+            residual = _ball_point_residual(px, py, region)
+            penalty = penalty + jnp.maximum(residual, 0.0) ** 2
 
         # Rectangles
-        def rect_penalty(params):
-            residual = _rectangle_point_residual(px, py, params)
-            return jnp.maximum(residual, 0.0) ** 2
-
-        penalty = penalty + jnp.sum(jax.vmap(rect_penalty)(nogo_params.rectangles))
+        for region in rectangles:
+            residual = _rectangle_point_residual(px, py, region)
+            penalty = penalty + jnp.maximum(residual, 0.0) ** 2
 
     return penalty
 
 
 def _compute_nogo_penalty_line(
-    joint_xs: Array, joint_ys: Array, nogo_params: NogoRegionParams
+    joint_xs: Array, joint_ys: Array, nogo_regions: NogoRegions
 ) -> Array:
     """Compute nogo penalty using line segment collision detection."""
     penalty = jnp.float32(0.0)
+    halfspaces, balls, rectangles = nogo_regions
 
     # Check each link segment (from joint i to joint i+1)
     for i in range(joint_xs.shape[0] - 1):
@@ -281,25 +284,19 @@ def _compute_nogo_penalty_line(
         p2_x, p2_y = joint_xs[i + 1], joint_ys[i + 1]
 
         # Halfspaces
-        def halfspace_penalty(params):
-            residual = _halfspace_line_residual(p1_x, p1_y, p2_x, p2_y, params)
-            return residual**2
-
-        penalty = penalty + jnp.sum(jax.vmap(halfspace_penalty)(nogo_params.halfspaces))
+        for region in halfspaces:
+            residual = _halfspace_line_residual(p1_x, p1_y, p2_x, p2_y, region)
+            penalty = penalty + residual**2
 
         # Balls
-        def ball_penalty(params):
-            residual = _ball_line_residual(p1_x, p1_y, p2_x, p2_y, params)
-            return residual**2
-
-        penalty = penalty + jnp.sum(jax.vmap(ball_penalty)(nogo_params.balls))
+        for region in balls:
+            residual = _ball_line_residual(p1_x, p1_y, p2_x, p2_y, region)
+            penalty = penalty + residual**2
 
         # Rectangles
-        def rect_penalty(params):
-            residual = _rectangle_line_residual(p1_x, p1_y, p2_x, p2_y, params)
-            return residual**2
-
-        penalty = penalty + jnp.sum(jax.vmap(rect_penalty)(nogo_params.rectangles))
+        for region in rectangles:
+            residual = _rectangle_line_residual(p1_x, p1_y, p2_x, p2_y, region)
+            penalty = penalty + residual**2
 
     return penalty
 
@@ -309,8 +306,8 @@ def _compute_objective(
     robot_params: RobotParams,
     target_x: float,
     target_y: float,
-    nogo_params: Optional[NogoRegionParams],
-    use_line_collision: bool,
+    nogo_regions: Optional[NogoRegions],  # Static
+    use_line_collision: bool,  # Static
 ) -> Array:
     """Compute the IK objective function."""
     ee_x, ee_y, _, joint_xs, joint_ys = _forward_kinematics(
@@ -320,16 +317,17 @@ def _compute_objective(
     # Position error
     objective = (ee_x - target_x) ** 2 + (ee_y - target_y) ** 2
 
-    # Nogo penalty (always computed if nogo_params provided, weight of 0 disables it)
-    # Note: nogo_params is None vs not-None is a static condition handled by has_nogo flag
-    if nogo_params is not None:
-        nogo_penalty = lax.cond(
-            use_line_collision,
-            lambda: NOGO_PENALTY_LINE
-            * _compute_nogo_penalty_line(joint_xs, joint_ys, nogo_params),
-            lambda: NOGO_PENALTY_POINT
-            * _compute_nogo_penalty_point(joint_xs, joint_ys, nogo_params),
-        )
+    # Note: nogo_regions is None vs not-None is a static condition. Any compilation must
+    # specify nogo_regions as a static argument.
+    if nogo_regions is not None:
+        if use_line_collision:
+            nogo_penalty = NOGO_PENALTY_LINE * _compute_nogo_penalty_line(
+                joint_xs, joint_ys, nogo_regions
+            )
+        else:
+            nogo_penalty = NOGO_PENALTY_POINT * _compute_nogo_penalty_point(
+                joint_xs, joint_ys, nogo_regions
+            )
         objective = objective + nogo_penalty
 
     return objective
@@ -379,7 +377,7 @@ def _optimization_step(
     target_y: float,
     target_angle: float,
     lock_angle: bool,
-    nogo_params: Optional[NogoRegionParams],
+    nogo_regions: Optional[NogoRegions],
     use_line_collision: bool,
     lr: float,
     momentum: float,
@@ -392,7 +390,7 @@ def _optimization_step(
         robot_params,
         target_x,
         target_y,
-        nogo_params,
+        nogo_regions,
         use_line_collision,
     )
 
@@ -429,7 +427,7 @@ def _optimization_step(
         "max_iterations",
         "robot_params",
         "use_line_collision",
-        "nogo_params",
+        "nogo_regions",
     ],
 )
 def _solve_ik_jit(
@@ -439,7 +437,7 @@ def _solve_ik_jit(
     target_y: float,
     target_angle: float,
     lock_angle: bool,
-    nogo_params: Optional[NogoRegionParams],
+    nogo_regions: Optional[NogoRegions],
     use_line_collision: bool,
     lr: float,
     momentum: float,
@@ -454,7 +452,7 @@ def _solve_ik_jit(
         target_x, target_y: Target end effector position.
         target_angle: Target end effector angle (used if lock_angle is True).
         lock_angle: Whether to lock the end effector angle.
-        nogo_params: Nogo region parameters (or None).
+        nogo_regions: Nogo regions (or None).
         use_line_collision: Whether to use line collision (True) or point collision (False).
         lr: Learning rate.
         momentum: Momentum coefficient.
@@ -495,7 +493,7 @@ def _solve_ik_jit(
             target_y,
             target_angle,
             lock_angle,
-            nogo_params,
+            nogo_regions,
             use_line_collision,
             lr,
             momentum,
@@ -581,45 +579,26 @@ class IKNumericJAX(IKSolver):
             joint_max=jnp.array(joint_max, dtype=jnp.float32),
         )
 
-        # Build nogo parameters
-        self.nogo_params: Optional[NogoRegionParams] = None
-        if world is not None:
-            halfspaces = []
-            balls = []
-            rectangles = []
+        # Build nogo regions from world model
+        self.nogo_regions: Optional[NogoRegions] = None
+        if world is not None and world.nogo:
+            halfspaces: list[RegionHalfspace] = []
+            balls: list[RegionBall] = []
+            rectangles: list[RegionRectangle] = []
 
             for region in world.nogo:
                 if isinstance(region, RegionHalfspace):
-                    halfspaces.append(
-                        [
-                            region.normal[0],
-                            region.normal[1],
-                            region.anchor[0],
-                            region.anchor[1],
-                        ]
-                    )
+                    halfspaces.append(region)
                 elif isinstance(region, RegionBall):
-                    balls.append([region.center[0], region.center[1], region.radius])
+                    balls.append(region)
                 elif isinstance(region, RegionRectangle):
-                    rectangles.append(
-                        [region.left, region.right, region.bottom, region.top]
-                    )
+                    rectangles.append(region)
 
-            # Convert to arrays, using dummy arrays if empty (for JIT compatibility)
-            self.nogo_params = NogoRegionParams(
-                halfspaces=jnp.array(
-                    halfspaces if halfspaces else [[0, 0, 0, 0]], dtype=jnp.float32
-                ),
-                balls=jnp.array(balls if balls else [[0, 0, 0]], dtype=jnp.float32),
-                rectangles=jnp.array(
-                    rectangles if rectangles else [[0, 0, 0, 0]], dtype=jnp.float32
-                ),
+            self.nogo_regions = (
+                tuple(halfspaces),
+                tuple(balls),
+                tuple(rectangles),
             )
-
-            # Store counts to mask out dummy entries
-            self._n_halfspaces = len(halfspaces)
-            self._n_balls = len(balls)
-            self._n_rectangles = len(rectangles)
 
     def starting(self, state: RobotState) -> None:
         """Warm up the JIT-compiled solver by running a dummy solve.
@@ -645,7 +624,7 @@ class IKNumericJAX(IKSolver):
             target_y,
             0.0,  # target_angle
             False,  # lock_angle
-            self.nogo_params,
+            self.nogo_regions,
             self.use_line_collision,
             self.lr,
             self.momentum,
@@ -689,7 +668,7 @@ class IKNumericJAX(IKSolver):
                 self.robot_params,
                 target_x,
                 target_y,
-                self.nogo_params,
+                self.nogo_regions,
                 self.use_line_collision,
             )
         )
@@ -705,7 +684,7 @@ class IKNumericJAX(IKSolver):
             target_y,
             target_angle,
             lock_angle,
-            self.nogo_params,
+            self.nogo_regions,
             self.use_line_collision,
             self.lr,
             self.momentum,
