@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-"""Test cases for JAX-based numeric IK solver."""
-
 import math
 from typing import Tuple
 

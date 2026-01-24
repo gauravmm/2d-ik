@@ -1,5 +1,3 @@
-# pyright: reportArgumentType=false
-
 import math
 
 import pytest
@@ -220,7 +218,9 @@ class TestRegionHalfspace:
 
         assert region.point((3.0, 4.0)) is True  # Point at anchor (on boundary)
         assert region.point((5.0, 4.0)) is True  # Point to the right of anchor (inside)
-        assert region.point((1.0, 4.0)) is False  # Point to the left of anchor (outside)
+        assert (
+            region.point((1.0, 4.0)) is False
+        )  # Point to the left of anchor (outside)
         assert region.point((5.0, 10.0)) is True  # Y coordinate doesn't affect result
 
     def test_line_simple(self):
@@ -314,7 +314,9 @@ class TestRegionBall:
         assert region.line(((1.0, 1.0), (2.0, 2.0))) is True  # Both inside
         assert region.line(((2.0, 0.0), (8.0, 0.0))) is True  # One inside, one outside
         assert region.line(((0.0, 0.0), (0.0, 0.0))) is True  # Zero-length at center
-        assert region.line(((10.0, 0.0), (0.0, 10.0))) is False  # Both outside, no intersection
+        assert (
+            region.line(((10.0, 0.0), (0.0, 10.0))) is False
+        )  # Both outside, no intersection
         assert region.line(((5.0, 0.0), (0.0, 5.0))) is True  # Both on boundary
 
     def test_line_segment(self):
@@ -433,8 +435,12 @@ class TestRegionRectangle:
 
         assert region.line(((1.0, 1.0), (2.0, 2.0))) is True  # Both inside
         assert region.line(((2.0, 2.0), (5.0, 2.0))) is True  # One inside, one outside
-        assert region.line(((5.0, 5.0), (6.0, 6.0))) is False  # Both outside, no intersection
-        assert region.line(((0.0, 0.0), (0.0, 0.0))) is True  # Zero-length at corner (on boundary)
+        assert (
+            region.line(((5.0, 5.0), (6.0, 6.0))) is False
+        )  # Both outside, no intersection
+        assert (
+            region.line(((0.0, 0.0), (0.0, 0.0))) is True
+        )  # Zero-length at corner (on boundary)
 
     def test_line_segment(self):
         """Test line segment collision with rectangles."""

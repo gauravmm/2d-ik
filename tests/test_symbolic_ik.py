@@ -2,7 +2,6 @@
 """Simple test for symbolic IK solver."""
 
 import math
-from typing import List
 from datamodel import DesiredPosition, RobotModel, RobotPosition, RobotState
 from numeric_sympy import IKNumericSympy
 
