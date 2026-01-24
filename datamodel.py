@@ -138,7 +138,7 @@ Region = RegionHalfspace | RegionBall | RegionRectangle
 
 @dataclass(frozen=True)
 class WorldModel:
-    nogo: Collection[Region] = field(default=tuple())
+    nogo: Tuple[Region, ...] = field(default=tuple())
 
 
 #
@@ -185,6 +185,8 @@ class IKReturn:
     initial_loss: float  # Loss at the start of optimization
     final_loss: float  # Loss at the end of optimization
     position_error: float  # Final Euclidean distance to target position
+
+    # TODO: Remove initial_loss.
 
 
 class IKSolver(ABC):

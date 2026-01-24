@@ -13,6 +13,7 @@ from datamodel import (
     DesiredPosition,
     IKReturn,
     IKSolver,
+    Region,
     RegionBall,
     RegionHalfspace,
     RegionRectangle,
@@ -306,7 +307,7 @@ def _compute_objective(
     robot_params: RobotParams,
     target_x: float,
     target_y: float,
-    nogo_regions: Optional[NogoRegions],  # Static
+    nogo_regions: Optional[Tuple[Region, ...]],  # Static
     use_line_collision: bool,  # Static
 ) -> Array:
     """Compute the IK objective function."""
@@ -377,7 +378,7 @@ def _optimization_step(
     target_y: float,
     target_angle: float,
     lock_angle: bool,
-    nogo_regions: Optional[NogoRegions],
+    nogo_regions: Optional[Tuple[Region, ...]],
     use_line_collision: bool,
     lr: float,
     momentum: float,
@@ -437,7 +438,7 @@ def _solve_ik_jit(
     target_y: float,
     target_angle: float,
     lock_angle: bool,
-    nogo_regions: Optional[NogoRegions],
+    nogo_regions: Optional[Tuple[Region, ...]],
     use_line_collision: bool,
     lr: float,
     momentum: float,
@@ -579,27 +580,6 @@ class IKNumericJAX(IKSolver):
             joint_max=jnp.array(joint_max, dtype=jnp.float32),
         )
 
-        # Build nogo regions from world model
-        self.nogo_regions: Optional[NogoRegions] = None
-        if world is not None and world.nogo:
-            halfspaces: list[RegionHalfspace] = []
-            balls: list[RegionBall] = []
-            rectangles: list[RegionRectangle] = []
-
-            for region in world.nogo:
-                if isinstance(region, RegionHalfspace):
-                    halfspaces.append(region)
-                elif isinstance(region, RegionBall):
-                    balls.append(region)
-                elif isinstance(region, RegionRectangle):
-                    rectangles.append(region)
-
-            self.nogo_regions = (
-                tuple(halfspaces),
-                tuple(balls),
-                tuple(rectangles),
-            )
-
     def starting(self, state: RobotState) -> None:
         """Warm up the JIT-compiled solver by running a dummy solve.
 
@@ -624,7 +604,7 @@ class IKNumericJAX(IKSolver):
             target_y,
             0.0,  # target_angle
             False,  # lock_angle
-            self.nogo_regions,
+            state.world.nogo,
             self.use_line_collision,
             self.lr,
             self.momentum,
@@ -661,18 +641,6 @@ class IKNumericJAX(IKSolver):
         # Initial angles
         initial_thetas = jnp.array(state.current.joint_angles, dtype=jnp.float32)
 
-        # Compute initial loss
-        initial_loss = float(
-            _compute_objective(
-                initial_thetas,
-                self.robot_params,
-                target_x,
-                target_y,
-                self.nogo_regions,
-                self.use_line_collision,
-            )
-        )
-
         # Start timing
         start_time = time.perf_counter()
 
@@ -684,7 +652,7 @@ class IKNumericJAX(IKSolver):
             target_y,
             target_angle,
             lock_angle,
-            self.nogo_regions,
+            state.world.nogo,
             self.use_line_collision,
             self.lr,
             self.momentum,
@@ -716,7 +684,7 @@ class IKNumericJAX(IKSolver):
             solve_time_ms=(end_time - start_time) * 1000,
             iterations=int(result.iterations),
             converged=bool(result.converged),
-            initial_loss=initial_loss,
+            initial_loss=-1,
             final_loss=float(result.final_loss),
             position_error=position_error,
         )
