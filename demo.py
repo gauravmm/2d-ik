@@ -71,39 +71,132 @@ def create_solver(
         raise ValueError(f"Unknown solver type: {solver_type}")
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Interactive IK solver demo",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    parser.add_argument(
-        "--solver",
-        "-s",
-        choices=["jax", "torch", "sympy", "fabrik", "symbolic"],
-        default="jax",
-        help="Solver backend to use",
-    )
-    parser.add_argument(
-        "--collision",
-        "-c",
-        choices=["line", "point"],
-        default="line",
-        help="Collision geometry type",
-    )
-    parser.add_argument(
-        "--no-nogo",
-        action="store_true",
-        help="Disable nogo zones",
-    )
-    args = parser.parse_args()
+def _animation_checkpoints(model):
+    checkpoints = [(2.5, 1), (2.5, 0.7), (0, 0.7), (0, 0.2), (0, 2), (0, 1.4)]
+    checkpoints.append(checkpoints[0])
+    return [
+        DesiredPosition(ee_position=(x, y), ee_angle=ee_angle)
+        for ee_angle in (0.0, None)
+        for x, y in checkpoints
+    ]
 
+
+def run_animation(args):
+    """Run the animation mode, following checkpoints with smooth position interpolation."""
+    model = RobotModel(
+        link_lengths=(1.0, 0.8, 0.6),
+        joint_limits=(
+            (0.2 * math.pi, math.pi),
+            (-math.pi, 0),
+            (-math.pi * 0.9, math.pi * 0.9),
+        ),
+    )
+
+    if args.no_nogo:
+        world = WorldModel(nogo=())
+    else:
+        nogo = (
+            RegionHalfspace((0, -1), (0, -0.2)),
+            RegionRectangle(0.5, 10.0, -10.0, 0.6),
+            RegionRectangle(0.5, 10.0, 1.2, 5.0),
+        )
+        world = WorldModel(nogo=nogo)
+
+    print(f"Creating {args.solver} solver with {args.collision} collision...")
+    ik_solver = create_solver(args.solver, model, world, args.collision)
+
+    initial_position = RobotPosition(joint_angles=(0.5 * math.pi, -math.pi / 4, 0.0))
+    current_state = RobotState(model, current=initial_position, world=world)
+
+    checkpoints = _animation_checkpoints(model)
+    max_step = 0.05  # Maximum distance between intermediate targets
+
+    # Warm start: solve IK at the first checkpoint position
+    first_cp = checkpoints[0]
+    result = ik_solver(current_state, first_cp)
+    current_state = result.state
+    print(f"Warm start: converged={result.converged}")
+
+    # Build trajectory: subdivide each segment and solve IK at every step
+    print("Building trajectory...")
+    solved_frames: list[RobotState] = [current_state]
+    frame_times_ms: list[float] = [0.0]  # warm start frame has no solve time
+    state = current_state
+
+    for i, cp in enumerate(checkpoints):
+        # Get start position from current state
+        if state.desired and state.desired.ee_position:
+            start_pos = state.desired.ee_position
+        else:
+            # Use forward kinematics end effector position
+            positions = state.get_joint_positions()
+            start_pos = positions[-1]
+
+        end_pos = cp.ee_position
+        dx = end_pos[0] - start_pos[0]
+        dy = end_pos[1] - start_pos[1]
+        dist = math.hypot(dx, dy)
+        num_steps = max(1, math.ceil(dist / max_step))
+
+        # Angle changes suddenly at the start of each segment
+        ee_angle = cp.ee_angle
+
+        converged = True
+        for step in range(1, num_steps + 1):
+            t = step / num_steps
+            interp_pos = (
+                start_pos[0] + dx * t,
+                start_pos[1] + dy * t,
+            )
+            desired = DesiredPosition(ee_position=interp_pos, ee_angle=ee_angle)
+            result = ik_solver(state, desired)
+            state = result.state
+            converged = converged and result.converged
+            solved_frames.append(state)
+            frame_times_ms.append(result.solve_time_ms)
+
+        print(
+            f"  Checkpoint {i}: pos=({cp.ee_position[0]:.1f}, {cp.ee_position[1]:.1f}), "
+            f"angle={'None' if cp.ee_angle is None else f'{cp.ee_angle:.1f}'}, "
+            f"steps={num_steps}, converged={converged}"
+        )
+
+    print(f"Total frames: {len(solved_frames)}")
+
+    def update_func(frame: int) -> RobotState:
+        return solved_frames[min(frame, len(solved_frames) - 1)]
+
+    title = f"2D IK Animation ({args.solver.upper()})"
+    viz = RobotVisualizer(current_state, title=title, view_area=args.view_area)
+
+    print(f"\nAnimation Mode ({args.solver.upper()})")
+    print("=" * 60)
+    print(f"Checkpoints: {len(checkpoints)}, Total frames: {len(solved_frames)}")
+    print("=" * 60)
+
+    viz.animate(
+        update_func, interval=33, frames=len(solved_frames), save_path=args.output
+    )
+
+    if args.output:
+        import os
+
+        timing_path = os.path.splitext(args.output)[0] + ".timing.csv"
+        with open(timing_path, "w") as f:
+            f.write("frame,solve_time_ms\n")
+            for i, t in enumerate(frame_times_ms):
+                f.write(f"{i},{t:.4f}\n")
+        print(f"Saved timing data to {timing_path}")
+
+
+def main(args):
     # Create a 3-link robot with joint limits
     model = RobotModel(
         link_lengths=(1.0, 0.8, 0.6),
         joint_limits=(
             (0.2 * math.pi, math.pi),
             (-math.pi, 0),
-            (-math.pi / 2, math.pi / 2),
+            (-math.pi * 0.9, math.pi * 0.9),
         ),
     )
 
@@ -127,7 +220,8 @@ def main():
     current_state = RobotState(model, current=initial_position, world=world)
 
     # Create visualizer
-    viz = RobotVisualizer(current_state)
+    title = f"2D IK Solver ({args.solver.upper()})"
+    viz = RobotVisualizer(current_state, title=title, view_area=args.view_area)
 
     # Click callback that updates the target and solves IK
     def on_click(x: float, y: float, btn: Literal["left", "right"]):
@@ -184,4 +278,54 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Interactive IK solver demo",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--solver",
+        "-s",
+        choices=["jax", "torch", "sympy", "fabrik", "symbolic"],
+        default="jax",
+        help="Solver backend to use",
+    )
+    parser.add_argument(
+        "--collision",
+        "-c",
+        choices=["line", "point"],
+        default="line",
+        help="Collision geometry type",
+    )
+    parser.add_argument(
+        "--no-nogo",
+        action="store_true",
+        help="Disable nogo zones",
+    )
+    parser.add_argument(
+        "--animate",
+        action="store_true",
+        help="Run animation following pre-defined checkpoints",
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        type=str,
+        default=None,
+        help="Save animation to file (e.g. output.webm). Requires --animate and ffmpeg.",
+    )
+    parser.add_argument(
+        "--view-area",
+        type=float,
+        nargs=4,
+        metavar=("XMIN", "XMAX", "YMIN", "YMAX"),
+        default=None,
+        help="Override view area (xmin xmax ymin ymax)",
+    )
+    args = parser.parse_args()
+    if args.view_area is not None:
+        args.view_area = tuple(args.view_area)
+
+    if args.animate:
+        run_animation(args)
+    else:
+        main(args)

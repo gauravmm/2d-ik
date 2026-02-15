@@ -35,6 +35,8 @@ class RobotVisualizer:
         link_width: float = 2.0,
         auto_scale: bool = True,
         scale_margin: float = 1.2,
+        title: str = "2D Robot Arm Visualization",
+        view_area: Optional[tuple[float, float, float, float]] = None,
     ):
         """Initialize the robot visualizer.
 
@@ -46,6 +48,8 @@ class RobotVisualizer:
             link_width: Width of link lines (in points)
             auto_scale: Whether to automatically scale the view based on robot reach
             scale_margin: Margin multiplier for auto-scaling (e.g., 1.2 = 20% margin)
+            title: Title for the visualization window
+            view_area: Optional (xmin, xmax, ymin, ymax) to override auto-scale
         """
         self.robot_state = robot_state
         self.click_callback = click_callback
@@ -53,6 +57,7 @@ class RobotVisualizer:
         self.link_width = link_width
         self.auto_scale = auto_scale
         self.scale_margin = scale_margin
+        self.view_area = view_area
 
         # Create figure and axis
         self.fig, self.ax = plt.subplots(figsize=figsize)
@@ -60,7 +65,7 @@ class RobotVisualizer:
         self.ax.grid(True, alpha=0.3)
         self.ax.set_xlabel("X (units)")
         self.ax.set_ylabel("Y (units)")
-        self.ax.set_title("2D Robot Arm Visualization")
+        self.ax.set_title(title)
 
         # Initialize plot elements
         self.link_lines: list[Line2D] = []
@@ -194,7 +199,11 @@ class RobotVisualizer:
 
     def _update_view_limits(self):
         """Update the view limits based on robot configuration."""
-        if self.auto_scale:
+        if self.view_area is not None:
+            xmin, xmax, ymin, ymax = self.view_area
+            self.ax.set_xlim(xmin, xmax)
+            self.ax.set_ylim(ymin, ymax)
+        elif self.auto_scale:
             # Calculate maximum reach (sum of all link lengths)
             max_reach = sum(self.robot_state.model.link_lengths)
             margin = max_reach * self.scale_margin
@@ -251,6 +260,9 @@ class RobotVisualizer:
                 and robot_state.desired.ee_position is not None
             ):
                 self.end_effector_circle.center = robot_state.desired.ee_position
+                self.end_effector_circle.set_color(
+                    "blue" if robot_state.desired.ee_angle is not None else "green"
+                )
             else:
                 self.end_effector_circle.center = (999.0, 999.0)
 
@@ -269,6 +281,7 @@ class RobotVisualizer:
         update_func: Callable[[int], RobotState],
         interval: int = 50,
         frames: Optional[int] = None,
+        save_path: Optional[str] = None,
     ):
         """Run an animation loop that updates the robot position.
 
@@ -276,6 +289,7 @@ class RobotVisualizer:
             update_func: Function that takes frame number and returns a RobotPosition
             interval: Time between frames in milliseconds
             frames: Number of frames (None for infinite loop)
+            save_path: Optional file path to save the animation (e.g. "output.webm")
         """
 
         def animate_frame(frame) -> Sequence[artist.Artist]:
@@ -291,7 +305,13 @@ class RobotVisualizer:
             self.fig, animate_frame, frames=frames, interval=interval, blit=False
         )
 
-        plt.show()
+        if save_path:
+            fps = 1000 / interval
+            print(f"Saving animation to {save_path}...")
+            anim.save(save_path, writer="ffmpeg", fps=fps)
+            print(f"Saved {save_path}")
+        else:
+            plt.show()
         return anim
 
     def set_click_callback(self, callback: ClickCallbackType):
