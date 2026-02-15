@@ -72,7 +72,8 @@ def create_solver(
 
 
 def _animation_checkpoints(model):
-    checkpoints = [(2.5, 1), (2.5, 0.7), (0, 0.7), (0, 0.2), (0, 2), (0, 1)]
+    checkpoints = [(2.5, 1), (2.5, 0.7), (0, 0.7), (0, 0.2), (0, 2), (0, 1.4)]
+    checkpoints.append(checkpoints[0])
     return [
         DesiredPosition(ee_position=(x, y), ee_angle=ee_angle)
         for ee_angle in (0.0, None)
@@ -119,6 +120,7 @@ def run_animation(args):
     # Build trajectory: subdivide each segment and solve IK at every step
     print("Building trajectory...")
     solved_frames: list[RobotState] = [current_state]
+    frame_times_ms: list[float] = [0.0]  # warm start frame has no solve time
     state = current_state
 
     for i, cp in enumerate(checkpoints):
@@ -151,6 +153,7 @@ def run_animation(args):
             state = result.state
             converged = converged and result.converged
             solved_frames.append(state)
+            frame_times_ms.append(result.solve_time_ms)
 
         print(
             f"  Checkpoint {i}: pos=({cp.ee_position[0]:.1f}, {cp.ee_position[1]:.1f}), "
@@ -163,14 +166,27 @@ def run_animation(args):
     def update_func(frame: int) -> RobotState:
         return solved_frames[min(frame, len(solved_frames) - 1)]
 
-    viz = RobotVisualizer(current_state)
+    title = f"2D IK Animation ({args.solver.upper()})"
+    viz = RobotVisualizer(current_state, title=title, view_area=args.view_area)
 
     print(f"\nAnimation Mode ({args.solver.upper()})")
     print("=" * 60)
     print(f"Checkpoints: {len(checkpoints)}, Total frames: {len(solved_frames)}")
     print("=" * 60)
 
-    viz.animate(update_func, interval=33, frames=len(solved_frames))
+    viz.animate(
+        update_func, interval=33, frames=len(solved_frames), save_path=args.output
+    )
+
+    if args.output:
+        import os
+
+        timing_path = os.path.splitext(args.output)[0] + ".timing.csv"
+        with open(timing_path, "w") as f:
+            f.write("frame,solve_time_ms\n")
+            for i, t in enumerate(frame_times_ms):
+                f.write(f"{i},{t:.4f}\n")
+        print(f"Saved timing data to {timing_path}")
 
 
 def main(args):
@@ -204,7 +220,8 @@ def main(args):
     current_state = RobotState(model, current=initial_position, world=world)
 
     # Create visualizer
-    viz = RobotVisualizer(current_state)
+    title = f"2D IK Solver ({args.solver.upper()})"
+    viz = RobotVisualizer(current_state, title=title, view_area=args.view_area)
 
     # Click callback that updates the target and solves IK
     def on_click(x: float, y: float, btn: Literal["left", "right"]):
@@ -289,7 +306,24 @@ if __name__ == "__main__":
         action="store_true",
         help="Run animation following pre-defined checkpoints",
     )
+    parser.add_argument(
+        "--output",
+        "-o",
+        type=str,
+        default=None,
+        help="Save animation to file (e.g. output.webm). Requires --animate and ffmpeg.",
+    )
+    parser.add_argument(
+        "--view-area",
+        type=float,
+        nargs=4,
+        metavar=("XMIN", "XMAX", "YMIN", "YMAX"),
+        default=None,
+        help="Override view area (xmin xmax ymin ymax)",
+    )
     args = parser.parse_args()
+    if args.view_area is not None:
+        args.view_area = tuple(args.view_area)
 
     if args.animate:
         run_animation(args)
