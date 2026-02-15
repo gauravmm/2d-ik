@@ -75,8 +75,8 @@ def _animation_checkpoints(model):
     checkpoints = [(2.5, 1), (2.5, 0.7), (0, 0.7), (0, 0.2), (0, 2), (0, 1)]
     return [
         DesiredPosition(ee_position=(x, y), ee_angle=ee_angle)
-        for x, y in checkpoints
         for ee_angle in (0.0, None)
+        for x, y in checkpoints
     ]
 
 
@@ -109,6 +109,12 @@ def run_animation(args):
 
     checkpoints = _animation_checkpoints(model)
     max_step = 0.05  # Maximum distance between intermediate targets
+
+    # Warm start: solve IK at the first checkpoint position
+    first_cp = checkpoints[0]
+    result = ik_solver(current_state, first_cp)
+    current_state = result.state
+    print(f"Warm start: converged={result.converged}")
 
     # Build trajectory: subdivide each segment and solve IK at every step
     print("Building trajectory...")
