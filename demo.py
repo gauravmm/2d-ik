@@ -108,69 +108,66 @@ def run_animation(args):
     current_state = RobotState(model, current=initial_position, world=world)
 
     checkpoints = _animation_checkpoints(model)
-    frames_per_segment = 60
+    max_step = 0.05  # Maximum distance between intermediate targets
 
-    # Pre-solve all checkpoints
-    print("Pre-solving checkpoints...")
-    solved_states: list[RobotState] = [current_state]
+    # Build trajectory: subdivide each segment and solve IK at every step
+    print("Building trajectory...")
+    solved_frames: list[RobotState] = [current_state]
+    state = current_state
+
     for i, cp in enumerate(checkpoints):
-        result = ik_solver(solved_states[-1], cp)
-        solved_states.append(result.state)
-        print(f"  Checkpoint {i}: pos=({cp.ee_position[0]:.1f}, {cp.ee_position[1]:.1f}), "
-              f"angle={'None' if cp.ee_angle is None else f'{cp.ee_angle:.1f}'}, "
-              f"converged={result.converged}")
+        # Get start position from current state
+        if state.desired and state.desired.ee_position:
+            start_pos = state.desired.ee_position
+        else:
+            # Use forward kinematics end effector position
+            positions = state.get_joint_positions()
+            start_pos = positions[-1]
 
-    total_frames = len(checkpoints) * frames_per_segment
+        end_pos = cp.ee_position
+        dx = end_pos[0] - start_pos[0]
+        dy = end_pos[1] - start_pos[1]
+        dist = math.hypot(dx, dy)
+        num_steps = max(1, math.ceil(dist / max_step))
+
+        # Angle changes suddenly at the start of each segment
+        ee_angle = cp.ee_angle
+
+        converged = True
+        for step in range(1, num_steps + 1):
+            t = step / num_steps
+            interp_pos = (
+                start_pos[0] + dx * t,
+                start_pos[1] + dy * t,
+            )
+            desired = DesiredPosition(ee_position=interp_pos, ee_angle=ee_angle)
+            result = ik_solver(state, desired)
+            state = result.state
+            converged = converged and result.converged
+            solved_frames.append(state)
+
+        print(
+            f"  Checkpoint {i}: pos=({cp.ee_position[0]:.1f}, {cp.ee_position[1]:.1f}), "
+            f"angle={'None' if cp.ee_angle is None else f'{cp.ee_angle:.1f}'}, "
+            f"steps={num_steps}, converged={converged}"
+        )
+
+    print(f"Total frames: {len(solved_frames)}")
 
     def update_func(frame: int) -> RobotState:
-        seg = min(frame // frames_per_segment, len(checkpoints) - 1)
-        t = (frame % frames_per_segment) / frames_per_segment
-
-        state_from = solved_states[seg]
-        state_to = solved_states[seg + 1]
-
-        # Smooth interpolation (ease in-out)
-        t_smooth = 0.5 - 0.5 * math.cos(t * math.pi)
-
-        # Interpolate joint angles
-        angles_from = state_from.current.joint_angles
-        angles_to = state_to.current.joint_angles
-        interp_angles = tuple(
-            a + (b - a) * t_smooth for a, b in zip(angles_from, angles_to)
-        )
-
-        # Angle change is sudden: use the target checkpoint's ee_angle from the start
-        desired = checkpoints[seg]
-
-        # Interpolate ee_position smoothly
-        pos_from = state_from.desired.ee_position if state_from.desired and state_from.desired.ee_position else desired.ee_position
-        pos_to = desired.ee_position
-        interp_pos = (
-            pos_from[0] + (pos_to[0] - pos_from[0]) * t_smooth,
-            pos_from[1] + (pos_to[1] - pos_from[1]) * t_smooth,
-        )
-
-        return RobotState(
-            model,
-            RobotPosition(joint_angles=interp_angles),
-            world=world,
-            desired=DesiredPosition(ee_position=interp_pos, ee_angle=desired.ee_angle),
-        )
+        return solved_frames[min(frame, len(solved_frames) - 1)]
 
     viz = RobotVisualizer(current_state)
 
     print(f"\nAnimation Mode ({args.solver.upper()})")
     print("=" * 60)
-    print(f"Checkpoints: {len(checkpoints)}, Frames per segment: {frames_per_segment}")
+    print(f"Checkpoints: {len(checkpoints)}, Total frames: {len(solved_frames)}")
     print("=" * 60)
 
-    viz.animate(update_func, interval=33, frames=total_frames)
+    viz.animate(update_func, interval=33, frames=len(solved_frames))
 
 
 def main(args):
-    if args.animate:
-        return run_animation(args)
-
     # Create a 3-link robot with joint limits
     model = RobotModel(
         link_lengths=(1.0, 0.8, 0.6),
@@ -288,4 +285,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    main(args)
+    if args.animate:
+        run_animation(args)
+    else:
+        main(args)
